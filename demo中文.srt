@@ -1,0 +1,344 @@
+1
+00:00:00,500 --> 00:00:05,500
+Supply chain finance fails when trust remains fragmented and off-chain.
+当信任仍然碎片化并停留在链下时，供应链金融就难以高效运转。
+
+2
+00:00:06,000 --> 00:00:11,000
+AttestFlow uses the Attestcoin protocol as its verifiable trust layer.
+AttestFlow 使用 Attestcoin 协议作为可验证的信任层。
+
+3
+00:00:11,500 --> 00:00:16,500
+This is not a single proof added after the workflow.
+这不是在业务流程结束后附加一份孤立的证明。
+
+4
+00:00:17,000 --> 00:00:22,000
+Attestcoin secures evidence, financing, ownership, and settlement end to end.
+Attestcoin 端到端保障证据、融资、权属与结算。
+
+5
+00:00:22,500 --> 00:00:26,500
+We begin by signing in as the supplier.
+我们先以供应商身份登录。
+
+6
+00:00:27,000 --> 00:00:31,000
+The workspace shows each receivable and its lifecycle.
+工作台展示每笔应收账款及其完整生命周期。
+
+7
+00:00:31,500 --> 00:00:33,500
+I click New Receivable.
+我点击“新增应收凭证”。
+
+8
+00:00:34,000 --> 00:00:38,500
+First, I upload the underlying supply contract and invoice.
+首先，我上传对应的供应合同和发票。
+
+9
+00:00:39,000 --> 00:00:43,500
+AttestFlow accepts PDF or text-based trade documents for analysis.
+AttestFlow 支持分析 PDF 或文本格式的贸易文件。
+
+10
+00:00:44,000 --> 00:00:47,000
+I click AI Analyze and Autofill.
+我点击“AI 识别并回填”。
+
+11
+00:00:47,500 --> 00:00:53,000
+The AI extracts the buyer, supplier, contract number, and invoice number.
+AI 自动提取买方、供应商、合同编号和发票编号。
+
+12
+00:00:53,500 --> 00:00:58,500
+It also identifies the receivable amount and payment due date.
+它还会识别应收金额和付款到期日。
+
+13
+00:00:59,000 --> 00:01:04,000
+The supplier reviews every extracted field before creating the record.
+供应商在创建记录前审核每个自动提取的字段。
+
+14
+00:01:04,500 --> 00:01:09,500
+I click Create Receivable to submit the verified trade details.
+我点击“创建凭证”，提交已核验的贸易信息。
+
+15
+00:01:10,000 --> 00:01:15,000
+The receivable hash now waits for confirmation from the buyer.
+应收凭证哈希现在等待核心买方确认。
+
+16
+00:01:16,000 --> 00:01:19,000
+Next, we switch to the core buyer.
+接下来，我们切换到核心买方。
+
+17
+00:01:20,000 --> 00:01:25,000
+The buyer reviews the contract, invoice, amount, and maturity date.
+买方审核合同、发票、金额和到期日。
+
+18
+00:01:25,500 --> 00:01:29,000
+These details represent the real payment obligation.
+这些信息共同代表真实的付款义务。
+
+19
+00:01:29,500 --> 00:01:34,000
+I click Confirm Payable and connect the buyer wallet.
+我点击“确认应付”，并连接买方钱包。
+
+20
+00:01:34,500 --> 00:01:39,500
+The wallet switches to the Creditcoin test network when required.
+钱包会在需要时切换到 Creditcoin 测试网。
+
+21
+00:01:40,000 --> 00:01:44,000
+The buyer signs a future EIP-three-zero-zero-nine payment authorization.
+买方签署一份未来生效的 EIP-3009 付款授权。
+
+22
+00:01:44,500 --> 00:01:49,000
+The server independently verifies and stores the signed authorization.
+服务器独立验证并保存这份已签署的授权。
+
+23
+00:01:49,500 --> 00:01:54,500
+This confirms the payable without moving or locking buyer funds.
+应付款由此完成确权，但不会转移或锁定买方资金。
+
+24
+00:01:55,000 --> 00:01:59,500
+The authorization becomes executable only within its settlement window.
+该授权只有进入指定结算窗口后才能执行。
+
+25
+00:02:00,000 --> 00:02:04,000
+The receivable status changes to Confirmed and Financeable.
+应收凭证状态变为“已确权可融资”。
+
+26
+00:02:04,500 --> 00:02:09,000
+The Attestcoin proof pipeline now enters its queued state.
+Attestcoin 证明流水线现在进入排队状态。
+
+27
+00:02:09,500 --> 00:02:14,500
+It waits for a verifiable financing transaction as source evidence.
+它等待一笔可验证的融资交易作为源证据。
+
+28
+00:01:18,000 --> 00:01:21,000
+Now we return to the supplier workspace.
+现在我们返回供应商工作台。
+
+29
+00:02:19,500 --> 00:02:23,500
+The confirmed receivable is ready for non-recourse financing.
+已确权的应收凭证可以发起无追索融资。
+
+30
+00:02:24,000 --> 00:02:26,500
+I click Start Financing Inquiry.
+我点击“发起融资询价”。
+
+31
+00:02:27,000 --> 00:02:32,000
+The wallet calls request Financing on the Attestcoin settlement contract.
+钱包调用 Attestcoin 结算合约的 requestFinancing 函数。
+
+32
+00:02:32,500 --> 00:02:38,000
+The protocol stores the receivable hash, token, supplier, and face value.
+协议保存应收哈希、Token、供应商地址和票面金额。
+
+33
+00:02:38,500 --> 00:02:43,000
+Its Financing Requested event becomes the proof's source transaction.
+FinancingRequested 事件成为证明的源交易。
+
+34
+00:01:20,000 --> 00:01:23,000
+We switch to the funder.
+我们切换到资金方。
+
+35
+00:02:47,000 --> 00:02:52,500
+The funder reads the protocol request and opens the quote form.
+资金方读取协议中的融资请求，并打开报价表单。
+
+36
+00:02:53,000 --> 00:02:55,500
+I enter the financing percentage.
+我输入融资比例。
+
+37
+00:02:56,000 --> 00:03:00,500
+AttestFlow calculates the advance amount and annualized yield automatically.
+AttestFlow 自动计算放款金额和年化收益率。
+
+38
+00:03:01,000 --> 00:03:04,500
+I also set the offer expiration time.
+我同时设置报价有效期。
+
+39
+00:03:05,000 --> 00:03:10,000
+The summary clearly shows the principal and total financing cost.
+摘要清晰展示融资本金和总融资成本。
+
+40
+00:03:10,500 --> 00:03:14,500
+I confirm the quote through the Attestcoin protocol.
+我通过 Attestcoin 协议确认报价。
+
+41
+00:03:15,000 --> 00:03:20,000
+First, the funder approves the settlement contract to use mUSDC.
+首先，资金方授权结算合约使用 mUSDC。
+
+42
+00:03:20,500 --> 00:03:25,500
+Then submit Offer records the terms and funder identity on-chain.
+随后，submitOffer 将报价条款和资金方身份记录上链。
+
+43
+00:03:26,000 --> 00:03:31,500
+The same call locks the exact financing principal inside the contract.
+同一次调用会将准确的融资本金锁入合约。
+
+44
+00:03:32,000 --> 00:03:36,500
+Attestcoin exposes principal, yield, expiry, and acceptance status on-chain.
+Attestcoin 在链上公开本金、收益率、有效期和接受状态。
+
+45
+00:01:22,000 --> 00:01:25,000
+We switch back to the supplier.
+我们切换回供应商。
+
+46
+00:03:41,000 --> 00:03:45,000
+The workspace displays the live, non-recourse financing offer.
+工作台展示实时的无追索融资报价。
+
+47
+00:03:45,500 --> 00:03:49,500
+I call accept Offer through the supplier wallet.
+我通过供应商钱包调用 acceptOffer。
+
+48
+00:03:50,000 --> 00:03:54,000
+The supplier confirms acceptance with the connected wallet.
+供应商使用已连接的钱包确认接受报价。
+
+49
+00:03:54,500 --> 00:03:59,000
+Attestcoin atomically releases the locked principal to the supplier.
+Attestcoin 以原子方式将锁定本金释放给供应商。
+
+50
+00:03:59,500 --> 00:04:04,500
+The accepted offer simultaneously identifies the funder as settlement recipient.
+报价被接受的同时，资金方被确定为到期结算接收人。
+
+51
+00:04:05,000 --> 00:04:08,500
+The receivable now shows Assigned and Funded.
+应收凭证现在显示为“债权已转让并完成融资”。
+
+52
+00:04:09,000 --> 00:04:13,000
+There is no separate off-chain payment reconciliation step.
+整个过程不需要单独进行链下付款对账。
+
+53
+00:04:13,500 --> 00:04:18,500
+For this demonstration, the operator advances the receivable to maturity.
+在本次演示中，运营方将应收凭证推进到到期状态。
+
+54
+00:04:19,000 --> 00:04:23,500
+The bound payment authorization is now executable through Attestcoin.
+已绑定的付款授权现在可以通过 Attestcoin 执行。
+
+55
+00:01:24,000 --> 00:01:27,000
+Finally, we return to the funder.
+最后，我们回到资金方。
+
+56
+00:04:28,000 --> 00:04:32,000
+The settlement monitor shows the receivable is due.
+结算监控显示该应收凭证已经到期。
+
+57
+00:04:32,500 --> 00:04:35,000
+I click Execute Relayer Settlement.
+我点击“执行 Relayer 结算”。
+
+58
+00:04:35,500 --> 00:04:40,000
+A restricted relayer calls settle With Authorization on Attestcoin.
+受限 Relayer 调用 Attestcoin 的 settleWithAuthorization 函数。
+
+59
+00:04:40,500 --> 00:04:46,000
+The protocol validates the payer, recipient, window, nonce, token, and amount.
+协议验证付款人、接收人、时间窗口、nonce、Token 和金额。
+
+60
+00:04:46,500 --> 00:04:50,500
+Anti-replay state prevents duplicate authorization or receivable settlement.
+防重放状态阻止授权或应收凭证被重复结算。
+
+61
+00:04:51,000 --> 00:04:55,500
+Attestcoin then credits a pull-payment balance to the funder.
+随后，Attestcoin 为资金方记入可主动领取的付款余额。
+
+62
+00:04:56,000 --> 00:05:01,000
+The funder wallet calls claim against its own protocol balance.
+资金方钱包调用 claim，领取属于自己的协议余额。
+
+63
+00:05:01,500 --> 00:05:06,500
+No caller can redirect those settlement funds to another wallet.
+任何调用者都无法将结算资金重定向到其他钱包。
+
+64
+00:05:07,000 --> 00:05:11,500
+The receivable is marked Paid and financing becomes Repaid.
+应收凭证被标记为“已支付”，融资状态变为“已偿还”。
+
+65
+00:05:12,000 --> 00:05:16,500
+Every protocol event and transaction hash remains independently verifiable.
+每个协议事件和交易哈希都可以被独立验证。
+
+66
+00:05:17,000 --> 00:05:21,500
+Attestcoin also registers a composite audit evidence hash on-chain.
+Attestcoin 还会在链上登记复合审计证据哈希。
+
+67
+00:05:22,000 --> 00:05:27,000
+It binds receivable, authorization, source transaction, and source block hashes.
+它绑定应收凭证、付款授权、源交易和源区块哈希。
+
+68
+00:05:27,500 --> 00:05:32,500
+Two contracts and six protocol writes cover the complete lifecycle.
+两份合约和六次协议写入覆盖完整业务生命周期。
+
+69
+00:05:33,000 --> 00:05:38,000
+AttestFlow demonstrates deep Attestcoin usage, from evidence to final repayment.
+AttestFlow 展示了 Attestcoin 从证据到最终兑付的深度应用。
