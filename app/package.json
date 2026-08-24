@@ -1,0 +1,38 @@
+{
+  "name": "app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "contracts:compile": "node scripts/compile-contracts.mjs",
+    "deploy:cc3:prepare": "node scripts/deploy-cc3.mjs --prepare",
+    "deploy:cc3": "node scripts/deploy-cc3.mjs",
+    "deploy:audit-proof-registry": "node scripts/deploy-audit-proof-registry.mjs",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.11",
+    "@tanstack/react-query": "^5.101.4",
+    "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "viem": "^2.55.19",
+    "wagmi": "^2.19.5"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
+    "@rolldown/binding-win32-x64-msvc": "^1.1.5",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "oxlint": "^1.71.0",
+    "solc": "^0.8.30",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}
