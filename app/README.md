@@ -35,7 +35,7 @@ npm run contracts:compile
 npm run deploy:cc3:prepare
 ```
 
-部署前在 `.env.local` 配置有效的 `CC3_BUYER_WALLET_ADDRESS` 和 `CC3_FUNDER_WALLET_ADDRESS`。部署脚本会向这两个公开钱包地址分配结算与报价所需的测试 mUSDC；不要把私钥写入该文件。
+部署前可在 `.env.local` 配置有效的 `CC3_FUNDER_WALLET_ADDRESS`。部署脚本会向该公开钱包地址分配报价所需的测试 mUSDC；不要把私钥写入该文件。
 
 部署私钥保存在 Git 忽略的 `.env.deploy.local`，命令不会回显私钥。通过 Creditcoin Discord `token-faucet` 频道为输出的 EVM 地址领取测试 CTC，到账后执行：
 
@@ -43,4 +43,4 @@ npm run deploy:cc3:prepare
 npm run deploy:cc3
 ```
 
-脚本等待交易确认后，会自动更新 `.env.local` 中的 `CC3_USDC_ADDRESS` 和 `CC3_SETTLEMENT_ADDRESS`，并向已配置的买方、资金方钱包各分配 250,000 mUSDC。这些是测试合约，`PAYMENT_AUTH_DEMO_MODE` 应保持为 `true`。
+脚本等待交易确认后，会自动更新 `.env.local` 中的 `CC3_USDC_ADDRESS` 和 `CC3_SETTLEMENT_ADDRESS`，并向已配置的资金方钱包分配 250,000 mUSDC。这些是测试合约，`PAYMENT_AUTH_DEMO_MODE` 应保持为 `true`。

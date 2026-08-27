@@ -14,7 +14,7 @@ export const creditcoinTestnet = defineChain({
 })
 
 const connectors = connectorsForWallets(
-  [{ groupName: '浏览器钱包', wallets: [injectedWallet] }],
+  [{ groupName: 'Browser Wallets', wallets: [injectedWallet] }],
   {
     appName: 'AttestFlow',
     projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'disabled',

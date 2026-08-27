@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EIP-3009 × Supply Chain Finance</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap");
+      :root { font-family: "Manrope", sans-serif; color: #f6f1e7; background: #111713; }
+      * { box-sizing: border-box; }
+      html, body { width: 1200px; height: 627px; margin: 0; overflow: hidden; }
+      .canvas {
+        position: relative; width: 1200px; height: 627px; overflow: hidden;
+        background: linear-gradient(90deg, transparent 49.8%, rgba(255,255,255,.045) 50%, transparent 50.2%), linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px), #111713;
+        background-size: 100% 100%, 48px 48px, 48px 48px, auto;
+      }
+      .topline { position: absolute; top: 40px; left: 52px; right: 52px; display: flex; align-items: center; justify-content: space-between; font: 500 12px "DM Mono", monospace; letter-spacing: 1.4px; text-transform: uppercase; }
+      .standard { display: flex; align-items: center; gap: 12px; color: #9fe3ca; }
+      .standard::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #9fe3ca; box-shadow: 0 0 0 5px rgba(159,227,202,.12); }
+      .category { color: #858f89; }
+      .intro { position: absolute; top: 123px; left: 52px; width: 520px; }
+      .eyebrow { margin: 0 0 18px; color: #ff8a68; font: 500 13px "DM Mono", monospace; letter-spacing: 1.5px; text-transform: uppercase; }
+      h1 { margin: 0; font-size: 58px; font-weight: 600; line-height: 1.08; letter-spacing: 0; }
+      h1 em { color: #9fe3ca; font-style: normal; }
+      .intro-copy { width: 450px; margin: 26px 0 0; color: #a9b1ac; font-size: 18px; line-height: 1.55; }
+      .benefits { position: absolute; left: 52px; bottom: 44px; display: flex; gap: 28px; }
+      .benefit { padding-left: 13px; border-left: 2px solid #ff8a68; }
+      .benefit strong { display: block; margin-bottom: 4px; color: #f6f1e7; font-size: 14px; font-weight: 600; }
+      .benefit span { color: #79847e; font-size: 12px; }
+      .network { position: absolute; top: 92px; right: 45px; width: 550px; height: 475px; }
+      .rail { position: absolute; top: 231px; left: 26px; width: 492px; height: 1px; background: #395148; }
+      .rail::before, .rail::after { content: ""; position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #9fe3ca; }
+      .rail::before { left: 0; } .rail::after { right: 0; }
+      .party { position: absolute; color: #8d9892; font: 500 11px "DM Mono", monospace; letter-spacing: 1.2px; text-transform: uppercase; }
+      .party strong { display: block; margin-top: 7px; color: #f6f1e7; font: 600 16px "Manrope", sans-serif; letter-spacing: 0; text-transform: none; }
+      .buyer { top: 183px; left: 0; text-align: left; }
+      .funder { top: 183px; right: 0; text-align: right; }
+      .supplier { bottom: 5px; left: 218px; text-align: center; }
+      .supplier::before { content: ""; position: absolute; left: 54px; bottom: 50px; width: 1px; height: 78px; background: #395148; }
+      .authorization { position: absolute; z-index: 2; top: 38px; left: 138px; width: 286px; height: 338px; padding: 24px; border: 1px solid #53665e; border-radius: 6px; background: #edf0e8; color: #172019; box-shadow: 18px 22px 0 #23352d; transform: rotate(-2deg); }
+      .auth-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 17px; border-bottom: 1px solid #c7cec8; color: #556159; font: 500 10px "DM Mono", monospace; letter-spacing: 1px; text-transform: uppercase; }
+      .verified { display: inline-flex; align-items: center; gap: 6px; color: #146e50; }
+      .verified::before { content: "✓"; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: #146e50; color: #fff; font-family: sans-serif; }
+      .amount-label { margin: 25px 0 5px; color: #6b756f; font: 500 10px "DM Mono", monospace; letter-spacing: 1px; text-transform: uppercase; }
+      .amount { margin: 0; color: #172019; font-size: 39px; font-weight: 700; letter-spacing: 0; }
+      .token { margin-left: 5px; color: #e35f40; font: 500 13px "DM Mono", monospace; }
+      .details { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 12px; margin-top: 28px; }
+      .detail span { display: block; margin-bottom: 5px; color: #7d8781; font: 500 9px "DM Mono", monospace; letter-spacing: .8px; text-transform: uppercase; }
+      .detail strong { display: block; overflow: hidden; color: #28332d; font: 500 11px "DM Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+      .signature { position: absolute; left: 24px; right: 24px; bottom: 20px; display: flex; align-items: end; justify-content: space-between; padding-top: 13px; border-top: 1px solid #c7cec8; }
+      .signature span { color: #7d8781; font: 500 9px "DM Mono", monospace; letter-spacing: .8px; text-transform: uppercase; }
+      .signature strong { color: #146e50; font: italic 600 19px Georgia, serif; }
+      .caption { position: absolute; right: 7px; bottom: 0; color: #647069; font: 400 10px "DM Mono", monospace; letter-spacing: .7px; }
+    </style>
+    <style>
+      html, body { width: 600px; height: 313.5px; }
+      .x-canvas { position: relative; width: 600px; height: 313.5px; overflow: hidden; color: #17241e; background: linear-gradient(rgba(27,62,49,.045) 1px, transparent 1px), linear-gradient(90deg,rgba(27,62,49,.045) 1px,transparent 1px), #f2f0e8; background-size: 24px 24px; }
+      .x-head { height: 61px; padding: 14px 27px; background: #153d30; color: #fbf8ee; }
+      .x-kicker { margin: 0 0 5px; color: #8fd9bc; font: 500 6px "DM Mono",monospace; letter-spacing: 1px; text-transform: uppercase; }
+      .x-head h1 { margin: 0; font-size: 18px; line-height: 1.05; }
+      .x-head h1 span { color: #ff8a64; }
+      .x-parties { position: absolute; top: 12px; right: 27px; display: flex; align-items: center; gap: 7px; color: #dce9e3; font: 500 5.5px "DM Mono",monospace; text-align: center; text-transform: uppercase; }
+      .x-party b { display: grid; place-items: center; width: 27px; height: 27px; margin: 0 auto 3px; border: 1px solid #719b8b; border-radius: 50%; color: #fff; font: 700 8px "Manrope",sans-serif; }
+      .x-link { position: relative; width: 25px; height: 1px; background: #719b8b; }
+      .x-link::after { content: "›"; position: absolute; top: -7px; right: -1px; color: #8fd9bc; font-size: 10px; }
+      .x-label { position: absolute; top: 77px; left: 27px; margin: 0; color: #617068; font: 500 6px "DM Mono",monospace; letter-spacing: .65px; text-transform: uppercase; }
+      .x-label strong { color: #e86646; font-weight: 500; }
+      .x-flow { position: absolute; top: 101px; left: 27px; right: 27px; display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; }
+      .x-flow::before { content: ""; position: absolute; top: 19px; left: 48px; right: 48px; height: 2px; background: #b5c1bb; }
+      .x-step { position: relative; z-index: 1; min-width: 0; text-align: center; }
+      .x-icon { display: grid; place-items: center; width: 39px; height: 39px; margin: 0 auto 10px; border: 1.5px solid #6e857a; border-radius: 50%; background: #f2f0e8; color: #31594a; font: 700 9px "DM Mono",monospace; }
+      .x-step.sign .x-icon { width: 47px; height: 47px; margin-top: -4px; margin-bottom: 6px; border: 2px solid #ff7855; background: #fff3eb; color: #dd5736; box-shadow: 0 0 0 5px rgba(255,120,85,.12); font: italic 700 14px Georgia,serif; }
+      .x-step.verify .x-icon { border-color: #153d30; background: #153d30; color: #98e0c4; }
+      .x-step.settle .x-icon { border-color: #7fbca4; background: #d9f0e6; color: #176548; }
+      .x-num { display: block; margin-bottom: 4px; color: #e86646; font: 500 5.5px "DM Mono",monospace; letter-spacing: .5px; }
+      .x-step h2 { margin: 0 0 5px; color: #17241e; font-size: 8px; line-height: 1.15; }
+      .x-step.sign h2 { color: #d95233; }
+      .x-step p { margin: 0 auto; max-width: 89px; color: #68766f; font-size: 5.8px; line-height: 1.42; }
+      .x-tag { display: inline-block; margin-top: 5px; padding: 3px 4px; border-radius: 2px; background: #e4e3db; color: #53645b; font: 500 4.6px "DM Mono",monospace; text-transform: uppercase; }
+      .x-step.sign .x-tag { background: #ffe0d4; color: #bd4428; }
+      .x-auth { position: absolute; left: 27px; right: 27px; bottom: 16px; display: grid; grid-template-columns: 100px 1fr 1fr 1fr 1.15fr; align-items: center; min-height: 43px; border: 1px solid #c7cec8; border-left: 4px solid #ff7855; background: rgba(255,255,252,.86); }
+      .x-auth-title { padding-left: 10px; }
+      .x-auth-title strong { display: block; margin-bottom: 2px; font-size: 7px; }
+      .x-auth-title span { color: #e86646; font: 500 5px "DM Mono",monospace; text-transform: uppercase; }
+      .x-field { min-width: 0; padding: 0 8px; border-left: 1px solid #d9ddd8; }
+      .x-field span { display: block; margin-bottom: 3px; color: #839088; font: 500 4.7px "DM Mono",monospace; text-transform: uppercase; }
+      .x-field strong { display: block; overflow: hidden; color: #2d3b34; font: 500 5.6px "DM Mono",monospace; text-overflow: ellipsis; white-space: nowrap; }
+      .x-field .x-approved { color: #12714f; font: italic 700 8px Georgia,serif; }
+    </style>
+  </head>
+  <body>
+    <main class="x-canvas">
+      <header class="x-head">
+        <p class="x-kicker">Supply chain finance / programmable repayment</p>
+        <h1>How an <span>EIP-3009 signature</span><br />settles a financed receivable</h1>
+      </header>
+      <aside class="x-parties" aria-label="Supply chain finance participants">
+        <div class="x-party"><b>S</b>Supplier</div><span class="x-link"></span>
+        <div class="x-party"><b>B</b>Buyer</div><span class="x-link"></span>
+        <div class="x-party"><b>F</b>Funder</div>
+      </aside>
+      <p class="x-label"><strong>At invoice maturity</strong> · authorization travels off-chain, value settles on-chain</p>
+      <section class="x-flow" aria-label="EIP-3009 signing and settlement flow">
+        <article class="x-step"><div class="x-icon">INV</div><span class="x-num">01 / RECEIVABLE</span><h2>Invoice confirmed</h2><p>Buyer validates the supplier's financed receivable.</p><span class="x-tag">Payment due</span></article>
+        <article class="x-step sign"><div class="x-icon">✍</div><span class="x-num">02 / SIGN</span><h2>Buyer signs</h2><p>EIP-3009 binds payer, amount, validity and nonce.</p><span class="x-tag">Off-chain</span></article>
+        <article class="x-step"><div class="x-icon">→</div><span class="x-num">03 / RELAY</span><h2>Operator submits</h2><p>The authorization is relayed without payer gas.</p><span class="x-tag">No prior approve</span></article>
+        <article class="x-step verify"><div class="x-icon">{✓}</div><span class="x-num">04 / VERIFY</span><h2>Contract verifies</h2><p>Signature, time window and nonce are checked on-chain.</p><span class="x-tag">Replay protected</span></article>
+        <article class="x-step settle"><div class="x-icon">$</div><span class="x-num">05 / SETTLE</span><h2>Funder receives</h2><p>Stablecoin repayment settles against the receivable.</p><span class="x-tag">Auditable</span></article>
+      </section>
+      <section class="x-auth" aria-label="Signed EIP-3009 authorization fields">
+        <div class="x-auth-title"><strong>Signed authorization</strong><span>EIP-3009 payload</span></div>
+        <div class="x-field"><span>Value</span><strong>48,750 STABLECOIN</strong></div>
+        <div class="x-field"><span>Validity</span><strong>25 AUG → 25 SEP</strong></div>
+        <div class="x-field"><span>Unique nonce</span><strong>0x9f2c...e418</strong></div>
+        <div class="x-field"><span>Buyer signature</span><strong class="x-approved">authorized ✓</strong></div>
+      </section>
+    </main>
+  </body>
+</html>

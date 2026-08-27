@@ -69,20 +69,19 @@ const deploy = async () => {
   if (!tokenReceipt.contractAddress) throw new Error('MockUSDC deployment did not return a contract address')
   console.log(`MockUSDC: ${tokenReceipt.contractAddress}`)
 
-  for (const [role, address] of [['buyer', env.CC3_BUYER_WALLET_ADDRESS], ['funder', env.CC3_FUNDER_WALLET_ADDRESS]]) {
-    if (!isAddress(address)) {
-      console.log(`Skipped ${role} mUSDC funding: wallet address is not configured.`)
-      continue
-    }
+  const funderAddress = env.CC3_FUNDER_WALLET_ADDRESS
+  if (isAddress(funderAddress)) {
     const fundingHash = await walletClient.writeContract({
       address: tokenReceipt.contractAddress,
       abi: artifacts.MockUSDC.abi,
       functionName: 'transfer',
-      args: [address, parseUnits('250000', 6)],
+      args: [funderAddress, parseUnits('250000', 6)],
     })
     const fundingReceipt = await publicClient.waitForTransactionReceipt({ hash: fundingHash })
-    if (fundingReceipt.status !== 'success') throw new Error(`Failed to fund ${role} wallet`)
-    console.log(`Funded ${role} wallet with 250,000 mUSDC.`)
+    if (fundingReceipt.status !== 'success') throw new Error('Failed to fund funder wallet')
+    console.log('Funded funder wallet with 250,000 mUSDC.')
+  } else {
+    console.log('Skipped funder mUSDC funding: wallet address is not configured.')
   }
 
   const settlementHash = await walletClient.deployContract({

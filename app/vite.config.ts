@@ -22,7 +22,7 @@ const readJsonBody = <T>(request: IncomingMessage) => new Promise<T>((resolveBod
   request.on('data', (chunk: Buffer) => {
     size += chunk.length
     if (size > 2_000_000) {
-      reject(new Error('上传内容不能超过 2 MB'))
+      reject(new Error('Upload content cannot exceed 2 MB'))
       request.destroy()
       return
     }
@@ -32,7 +32,7 @@ const readJsonBody = <T>(request: IncomingMessage) => new Promise<T>((resolveBod
     try {
       resolveBody(JSON.parse(Buffer.concat(chunks).toString('utf8')) as T)
     } catch {
-      reject(new Error('请求内容不是有效 JSON'))
+      reject(new Error('The request body is not valid JSON'))
     }
   })
   request.on('error', reject)
@@ -55,14 +55,14 @@ const documentAiPlugin = (env: Record<string, string>): Plugin => ({
 
       const apiKey = env.SILICONFLOW_API_KEY
       if (!apiKey) {
-        sendJson(response, 503, { error: '服务端尚未配置 SILICONFLOW_API_KEY' })
+        sendJson(response, 503, { error: 'SILICONFLOW_API_KEY is not configured on the server' })
         return
       }
 
       try {
         const { contractText = '', invoiceText = '' } = await readJsonBody<DocumentPayload>(request)
         if (!contractText.trim() || !invoiceText.trim()) {
-          sendJson(response, 400, { error: '请同时上传合同和发票文件' })
+          sendJson(response, 400, { error: 'Upload both the contract and invoice files' })
           return
         }
 
@@ -83,15 +83,15 @@ const documentAiPlugin = (env: Record<string, string>): Plugin => ({
 
         if (!aiResponse.ok) {
           const message = await aiResponse.text()
-          throw new Error(`模型服务返回 ${aiResponse.status}: ${message.slice(0, 300)}`)
+          throw new Error(`The model service returned ${aiResponse.status}: ${message.slice(0, 300)}`)
         }
 
         const result = await aiResponse.json() as { choices?: Array<{ message?: { content?: string } }> }
         const content = result.choices?.[0]?.message?.content
-        if (!content) throw new Error('模型未返回识别结果')
+        if (!content) throw new Error('The model did not return analysis results')
         sendJson(response, 200, JSON.parse(content.replace(/^```json\s*|\s*```$/g, '')))
       } catch (error) {
-        sendJson(response, 500, { error: error instanceof Error ? error.message : '文档识别失败' })
+        sendJson(response, 500, { error: error instanceof Error ? error.message : 'Document analysis failed' })
       }
     })
   },
@@ -117,8 +117,8 @@ type ReceivablePayload = Omit<Receivable, 'id' | 'status'>
 const initialReceivables: Receivable[] = [
   {
     id: 'AR-2026-000001',
-    buyer: '环球制造集团',
-    supplier: '华辰精密有限公司',
+    buyer: 'Global Manufacturing Group',
+    supplier: 'Huachen Precision Co., Ltd.',
     invoice: 'INV-8891',
     contractNumber: 'SC-2026-0818',
     amount: 100000,
@@ -161,12 +161,12 @@ const receivableStorePlugin = (): Plugin => ({
           const payload = await readJsonBody<{ id?: string; status?: ReceivableStatus; financingStatus?: FinancingStatus }>(request)
           const allowedStatuses: ReceivableStatus[] = ['pending', 'active', 'assigned', 'matured', 'settled', 'paid', 'defaulted']
           const allowedFinancingStatuses: FinancingStatus[] = ['not_requested', 'quoting', 'offered', 'funded', 'repaid', 'in_default']
-          if (!payload.id || (!payload.status && !payload.financingStatus)) throw new Error('凭证状态更新无效')
-          if (payload.status && !allowedStatuses.includes(payload.status)) throw new Error('凭证状态更新无效')
-          if (payload.financingStatus && !allowedFinancingStatuses.includes(payload.financingStatus)) throw new Error('融资状态更新无效')
+          if (!payload.id || (!payload.status && !payload.financingStatus)) throw new Error('Invalid certificate status update')
+          if (payload.status && !allowedStatuses.includes(payload.status)) throw new Error('Invalid certificate status update')
+          if (payload.financingStatus && !allowedFinancingStatuses.includes(payload.financingStatus)) throw new Error('Invalid financing status update')
           const records = await readReceivables()
           const index = records.findIndex((record) => record.id === payload.id)
-          if (index < 0) throw new Error('应收凭证不存在')
+          if (index < 0) throw new Error('Receivable not found')
           const updated = { ...records[index], ...(payload.status && { status: payload.status }), ...(payload.financingStatus && { financingStatus: payload.financingStatus }) }
           records[index] = updated
           await writeReceivables(records)
@@ -174,15 +174,15 @@ const receivableStorePlugin = (): Plugin => ({
           return
         }
         if (request.method !== 'POST') {
-          sendJson(response, 405, { error: '请求方法不受支持' })
+          sendJson(response, 405, { error: 'Request method not supported' })
           return
         }
 
         const payload = await readJsonBody<Partial<ReceivablePayload>>(request)
         const requiredText = [payload.buyer, payload.supplier, payload.invoice, payload.contractNumber, payload.dueDate]
-        if (requiredText.some((value) => typeof value !== 'string' || !value.trim())) throw new Error('应收凭证字段不完整')
-        if (typeof payload.amount !== 'number' || !Number.isFinite(payload.amount) || payload.amount <= 0) throw new Error('应收金额必须大于 0')
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.dueDate!)) throw new Error('到期日期格式无效')
+        if (requiredText.some((value) => typeof value !== 'string' || !value.trim())) throw new Error('Receivable fields are incomplete')
+        if (typeof payload.amount !== 'number' || !Number.isFinite(payload.amount) || payload.amount <= 0) throw new Error('The receivable amount must be greater than 0')
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.dueDate!)) throw new Error('Invalid due date format')
 
         const records = await readReceivables()
         const nextSequence = records.reduce((highest, record) => {
@@ -203,7 +203,7 @@ const receivableStorePlugin = (): Plugin => ({
         await writeReceivables([...records, receivable])
         sendJson(response, 201, receivable)
       } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message : '无法保存应收凭证' })
+        sendJson(response, 400, { error: error instanceof Error ? error.message : 'Unable to save the receivable' })
       }
     })
   },
@@ -277,7 +277,7 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
         const receivableId = requestUrl.searchParams.get('receivableId')
         const receivable = (await readReceivables()).find((item) => item.id === receivableId)
         if (!receivable) {
-          sendJson(response, 404, { error: '应收凭证不存在' })
+          sendJson(response, 404, { error: 'Receivable not found' })
           return
         }
         const config = getPaymentAuthorizationConfig(env, receivable)
@@ -285,18 +285,18 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
         sendJson(response, config ? 200 : 503, config ? {
           ...config,
           funderAddress: isAddress(funderAddress) ? funderAddress : undefined,
-        } : { error: '服务端尚未配置 CC3_USDC_ADDRESS 和 CC3_SETTLEMENT_ADDRESS' })
+        } : { error: 'CC3_USDC_ADDRESS and CC3_SETTLEMENT_ADDRESS are not configured on the server' })
         return
       }
 
       if (request.method === 'GET' && requestUrl.pathname === '/status') {
         try {
           const receivableId = requestUrl.searchParams.get('receivableId')
-          if (!receivableId) throw new Error('缺少应收凭证 ID')
+          if (!receivableId) throw new Error('Missing receivable ID')
           const receivable = (await readReceivables()).find((item) => item.id === receivableId)
-          if (!receivable) throw new Error('应收凭证不存在')
+          if (!receivable) throw new Error('Receivable not found')
           const config = getPaymentAuthorizationConfig(env, receivable)
-          if (!config) throw new Error('服务端尚未配置 CC3_USDC_ADDRESS 和 CC3_SETTLEMENT_ADDRESS')
+          if (!config) throw new Error('CC3_USDC_ADDRESS and CC3_SETTLEMENT_ADDRESS are not configured on the server')
           const record = (await readAuthorizations()).find((item) => item.receivableId === receivableId)
           const matchesCurrentTerms = record
             && record.message.value === config.value
@@ -314,44 +314,39 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
             verifiedAt: record.verifiedAt,
           } : { status: 'not_found' })
         } catch (error) {
-          sendJson(response, 400, { error: error instanceof Error ? error.message : '无法查询付款授权' })
+          sendJson(response, 400, { error: error instanceof Error ? error.message : 'Unable to query the payment authorization' })
         }
         return
       }
 
       if (request.method !== 'POST' || requestUrl.pathname !== '/') {
-        sendJson(response, 404, { error: '接口不存在' })
+        sendJson(response, 404, { error: 'Endpoint not found' })
         return
       }
 
       try {
         const payload = await readJsonBody<AuthorizationPayload>(request)
         const { receivableId, message, signature } = payload
-        if (!receivableId) throw new Error('缺少应收凭证 ID')
+        if (!receivableId) throw new Error('Missing receivable ID')
         const receivable = (await readReceivables()).find((item) => item.id === receivableId)
-        if (!receivable) throw new Error('应收凭证不存在')
+        if (!receivable) throw new Error('Receivable not found')
         const config = getPaymentAuthorizationConfig(env, receivable)
-        if (!config) throw new Error('服务端尚未配置 CC3_USDC_ADDRESS 和 CC3_SETTLEMENT_ADDRESS')
+        if (!config) throw new Error('CC3_USDC_ADDRESS and CC3_SETTLEMENT_ADDRESS are not configured on the server')
         const from = message?.from
         const to = message?.to
         const nonce = message?.nonce
         if (!message || typeof from !== 'string' || typeof to !== 'string' || !isAddress(from) || !isAddress(to)) {
-          throw new Error('付款授权地址无效')
+          throw new Error('Invalid payment authorization address')
         }
-        if (!isHex(nonce) || !/^0x[0-9a-fA-F]{64}$/.test(nonce)) throw new Error('付款授权 nonce 必须为 bytes32')
-        if (!isHex(signature)) throw new Error('付款授权签名格式无效')
-        if (!isAddressEqual(to, config.settlementAddress)) throw new Error('付款授权收款合约不匹配')
+        if (!isHex(nonce) || !/^0x[0-9a-fA-F]{64}$/.test(nonce)) throw new Error('The payment authorization nonce must be bytes32')
+        if (!isHex(signature)) throw new Error('Invalid payment authorization signature format')
+        if (!isAddressEqual(to, config.settlementAddress)) throw new Error('The payment authorization recipient contract does not match')
         if (message.value !== config.value || message.validAfter !== config.validAfter || message.validBefore !== config.validBefore) {
-          throw new Error('付款授权金额或有效期与应收凭证不匹配')
+          throw new Error('The payment authorization amount or validity period does not match the receivable')
         }
-        const allowedBuyer = env.CC3_BUYER_WALLET_ADDRESS
-        if (allowedBuyer && (!isAddress(allowedBuyer) || !isAddressEqual(from, allowedBuyer))) {
-          throw new Error('当前钱包不是该买方的已授权签署钱包')
-        }
-
         const typedData = buildPaymentAuthorizationTypedData(config, from, nonce)
         const valid = await verifyTypedData({ address: from, ...typedData, signature })
-        if (!valid) throw new Error('EIP-3009 签名验证失败')
+        if (!valid) throw new Error('EIP-3009 signature verification failed')
 
         const authorizationHash = hashTypedData(typedData)
         const records = await readAuthorizations()
@@ -367,7 +362,7 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
             && isAddress(existing.message.to)
             && isAddressEqual(existing.message.to, config.settlementAddress)
           if (existingMatchesCurrentTerms && (existing.authorizationHash !== authorizationHash || existing.signature !== signature)) {
-            sendJson(response, 409, { error: '该应收凭证已保存另一份付款授权' })
+            sendJson(response, 409, { error: 'Another payment authorization is already saved for this receivable' })
             return
           }
           if (existingMatchesCurrentTerms) {
@@ -376,7 +371,7 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
           }
         }
         if (records.some((record, index) => index !== existingIndex && (record.message.nonce === nonce || record.signature === signature))) {
-          sendJson(response, 409, { error: '该 nonce 或签名已被另一付款授权使用' })
+          sendJson(response, 409, { error: 'This nonce or signature is already used by another payment authorization' })
           return
         }
 
@@ -401,7 +396,7 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
         await writeAuthorizations(nextRecords)
         sendJson(response, 201, record)
       } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message : '付款授权无效' })
+        sendJson(response, 400, { error: error instanceof Error ? error.message : 'Invalid payment authorization' })
       }
     })
   },
@@ -433,7 +428,7 @@ const auditProofRegistryAbi = [
 const loadRelayerAccount = async () => {
   const keyFile = await readFile(resolve(process.cwd(), '.env.deploy.local'), 'utf8')
   const privateKey = keyFile.match(/^CC3_(?:RELAYER|DEPLOYER)_PRIVATE_KEY=(0x[0-9a-fA-F]{64})$/m)?.[1]
-  if (!privateKey) throw new Error('服务端尚未配置 CC3 Relayer 私钥')
+  if (!privateKey) throw new Error('The CC3 relayer private key is not configured on the server')
   return privateKeyToAccount(privateKey as Hex)
 }
 
@@ -490,11 +485,11 @@ const processAuditProof = async (env: Record<string, string>, receivableId: stri
   activeAuditProofJobs.add(receivableId)
   try {
     const registryAddress = env.CC3_AUDIT_PROOF_REGISTRY_ADDRESS
-    if (!isAddress(registryAddress)) throw new Error('服务端尚未配置审计证明注册表')
+    if (!isAddress(registryAddress)) throw new Error('The audit proof registry is not configured on the server')
     const receivable = (await readReceivables()).find((item) => item.id === receivableId)
-    if (!receivable) throw new Error('应收凭证不存在')
+    if (!receivable) throw new Error('Receivable not found')
     const config = getPaymentAuthorizationConfig(env, receivable)
-    if (!config) throw new Error('服务端尚未配置结算合约')
+    if (!config) throw new Error('The settlement contract is not configured on the server')
     const authorization = (await readAuthorizations()).find((item) => item.receivableId === receivableId)
     if (!authorization
       || !isHex(authorization.authorizationHash)
@@ -506,7 +501,7 @@ const processAuditProof = async (env: Record<string, string>, receivableId: stri
       || authorization.message.value !== config.value
       || authorization.message.validAfter !== config.validAfter
       || authorization.message.validBefore !== config.validBefore) {
-      throw new Error('该应收凭证尚无当前部署的有效付款授权')
+      throw new Error('This receivable has no valid payment authorization for the current deployment')
     }
 
     const account = await loadRelayerAccount()
@@ -563,7 +558,7 @@ const processAuditProof = async (env: Record<string, string>, receivableId: stri
     const registrationTransactionHash = await walletClient.writeContract(request)
     await updateAuditProofJob(receivableId, { registrationTransactionHash })
     const receipt = await publicClient.waitForTransactionReceipt({ hash: registrationTransactionHash })
-    if (receipt.status !== 'success') throw new Error('审计证明链上登记交易失败')
+    if (receipt.status !== 'success') throw new Error('The on-chain audit proof registration transaction failed')
     const registeredBlock = await publicClient.getBlock({ blockNumber: receipt.blockNumber })
     await updateAuditProofJob(receivableId, {
       status: 'recorded',
@@ -574,7 +569,7 @@ const processAuditProof = async (env: Record<string, string>, receivableId: stri
   } catch (error) {
     await updateAuditProofJob(receivableId, {
       status: 'failed',
-      error: error instanceof Error ? error.message.split('\n')[0] : '审计证明任务失败',
+      error: error instanceof Error ? error.message.split('\n')[0] : 'Audit proof task failed',
     })
   } finally {
     activeAuditProofJobs.delete(receivableId)
@@ -589,7 +584,7 @@ const auditProofPlugin = (env: Record<string, string>): Plugin => ({
       try {
         if (request.method === 'POST' && requestUrl.pathname === '/') {
           const { receivableId } = await readJsonBody<{ receivableId?: string }>(request)
-          if (!receivableId) throw new Error('缺少应收凭证 ID')
+          if (!receivableId) throw new Error('Missing receivable ID')
           const existing = (await readAuditProofJobs()).find((job) => job.receivableId === receivableId)
           const job = existing || await updateAuditProofJob(receivableId, { status: 'queued' })
           if (job.status !== 'recorded') void processAuditProof(env, receivableId)
@@ -598,7 +593,7 @@ const auditProofPlugin = (env: Record<string, string>): Plugin => ({
         }
         if (request.method === 'GET' && requestUrl.pathname === '/status') {
           const receivableId = requestUrl.searchParams.get('receivableId')
-          if (!receivableId) throw new Error('缺少应收凭证 ID')
+          if (!receivableId) throw new Error('Missing receivable ID')
           const job = (await readAuditProofJobs()).find((item) => item.receivableId === receivableId)
           if (!job) {
             sendJson(response, 200, { receivableId, status: 'not_started' })
@@ -608,9 +603,9 @@ const auditProofPlugin = (env: Record<string, string>): Plugin => ({
           sendJson(response, 200, job)
           return
         }
-        sendJson(response, 404, { error: '接口不存在' })
+        sendJson(response, 404, { error: 'Endpoint not found' })
       } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message : '审计证明请求失败' })
+        sendJson(response, 400, { error: error instanceof Error ? error.message : 'Audit proof request failed' })
       }
     })
   },
@@ -621,20 +616,20 @@ const settlementPlugin = (env: Record<string, string>): Plugin => ({
   configureServer(server) {
     server.middlewares.use('/api/settlements', async (request, response) => {
       if (request.method !== 'POST') {
-        sendJson(response, 405, { error: '请求方法不受支持' })
+        sendJson(response, 405, { error: 'Request method not supported' })
         return
       }
       try {
         const { receivableId } = await readJsonBody<{ receivableId?: string }>(request)
-        if (!receivableId) throw new Error('缺少应收凭证 ID')
+        if (!receivableId) throw new Error('Missing receivable ID')
         const receivables = await readReceivables()
         const receivableIndex = receivables.findIndex((item) => item.id === receivableId)
-        if (receivableIndex < 0) throw new Error('应收凭证不存在')
+        if (receivableIndex < 0) throw new Error('Receivable not found')
         const receivable = receivables[receivableIndex]
         const authorization = (await readAuthorizations()).find((item) => item.receivableId === receivableId)
-        if (!authorization) throw new Error('该应收凭证尚无付款授权')
+        if (!authorization) throw new Error('This receivable does not have a payment authorization')
         const config = getPaymentAuthorizationConfig(env, receivable)
-        if (!config) throw new Error('服务端尚未配置结算合约')
+        if (!config) throw new Error('The settlement contract is not configured on the server')
         if (!isAddress(authorization.tokenAddress)
           || !isAddressEqual(authorization.tokenAddress, config.tokenAddress)
           || typeof authorization.message.to !== 'string'
@@ -643,18 +638,18 @@ const settlementPlugin = (env: Record<string, string>): Plugin => ({
           || authorization.message.value !== config.value
           || authorization.message.validAfter !== config.validAfter
           || authorization.message.validBefore !== config.validBefore) {
-          throw new Error('付款授权与当前应收凭证条款不匹配，请买方重新签署')
+          throw new Error('The payment authorization does not match the current receivable terms. Ask the buyer to sign again.')
         }
         const account = await loadRelayerAccount()
         const publicClient = createPublicClient({ chain: cc3Testnet, transport: http() })
         const walletClient = createWalletClient({ account, chain: cc3Testnet, transport: http() })
         const isOperator = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'operators', args: [account.address] })
-        if (!isOperator) throw new Error('当前 Relayer 不是结算合约授权 Operator')
+        if (!isOperator) throw new Error('The current relayer is not an authorized operator for the settlement contract')
         const receivableIdHash = keccak256(toBytes(receivableId))
         const offer = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'financingOffers', args: [receivableIdHash] })
         const recipient = offer[0]
-        if (!offer[7]) throw new Error('链上融资报价尚未由供应商接受')
-        if (!isAddressEqual(offer[2], config.tokenAddress) || offer[4] !== BigInt(config.value)) throw new Error('链上融资报价与应收结算条款不匹配')
+        if (!offer[7]) throw new Error('The supplier has not accepted the on-chain financing offer')
+        if (!isAddressEqual(offer[2], config.tokenAddress) || offer[4] !== BigInt(config.value)) throw new Error('The on-chain financing offer does not match the receivable settlement terms')
         const alreadySettled = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'settledReceivables', args: [receivableIdHash] })
         if (alreadySettled) {
           const claimableAmount = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'claimable', args: [config.tokenAddress, recipient] })
@@ -680,13 +675,13 @@ const settlementPlugin = (env: Record<string, string>): Plugin => ({
         const { request: transactionRequest } = await publicClient.simulateContract({ account, address: config.settlementAddress, abi: settlementAbi, functionName: 'settleWithAuthorization', args })
         const transactionHash = await walletClient.writeContract(transactionRequest)
         const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash })
-        if (receipt.status !== 'success') throw new Error('链上兑付交易执行失败')
+        if (receipt.status !== 'success') throw new Error('The on-chain settlement transaction failed')
         const claimableAmount = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'claimable', args: [config.tokenAddress, recipient] })
         receivables[receivableIndex] = { ...receivable, status: 'settled' }
         await writeReceivables(receivables)
         sendJson(response, 200, { transactionHash, blockNumber: receipt.blockNumber.toString(), claimableAmount: claimableAmount.toString(), recipient })
       } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message.split('\n')[0] : '链上兑付失败' })
+        sendJson(response, 400, { error: error instanceof Error ? error.message.split('\n')[0] : 'On-chain settlement failed' })
       }
     })
   },

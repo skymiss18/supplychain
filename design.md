@@ -574,7 +574,7 @@ interface IReceivableSettlement {
 
   function claim(address token) external returns (uint256 amount);
   function claimFor(address token, address account) external returns (uint256 amount);
-  function setTokenAllowed(address token, bool allowed) external;
+  function (address token, bool allowed) external;
   function pause() external;
   function unpause() external;
 }
