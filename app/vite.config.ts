@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { createPublicClient, createWalletClient, defineChain, encodePacked, hashTypedData, http, isAddress, isAddressEqual, isHex, keccak256, parseSignature, toBytes, verifyTypedData, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -42,6 +42,22 @@ const sendJson = (response: ServerResponse, status: number, body: unknown) => {
   response.statusCode = status
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.end(JSON.stringify(body))
+}
+
+const writeJsonStore = async (storePath: string, value: unknown) => {
+  await mkdir(dirname(storePath), { recursive: true })
+  const temporaryPath = `${storePath}.${process.pid}.${crypto.randomUUID()}.tmp`
+  await writeFile(temporaryPath, JSON.stringify(value, null, 2), 'utf8')
+  try {
+    await rename(temporaryPath, storePath)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (process.platform !== 'win32' || (code !== 'EPERM' && code !== 'EEXIST')) throw error
+    await rm(storePath, { force: true })
+    await rename(temporaryPath, storePath)
+  } finally {
+    await rm(temporaryPath, { force: true })
+  }
 }
 
 const documentAiPlugin = (env: Record<string, string>): Plugin => ({
@@ -131,10 +147,7 @@ const initialReceivables: Receivable[] = [
 const receivableStorePath = resolve(process.cwd(), '.data', 'receivables.json')
 
 const writeReceivables = async (records: Receivable[]) => {
-  await mkdir(dirname(receivableStorePath), { recursive: true })
-  const temporaryPath = `${receivableStorePath}.tmp`
-  await writeFile(temporaryPath, JSON.stringify(records, null, 2), 'utf8')
-  await rename(temporaryPath, receivableStorePath)
+  await writeJsonStore(receivableStorePath, records)
 }
 
 const readReceivables = async (): Promise<Receivable[]> => {
@@ -242,10 +255,7 @@ const readAuthorizations = async (): Promise<StoredAuthorization[]> => {
 }
 
 const writeAuthorizations = async (records: StoredAuthorization[]) => {
-  await mkdir(dirname(authorizationStorePath), { recursive: true })
-  const temporaryPath = `${authorizationStorePath}.tmp`
-  await writeFile(temporaryPath, JSON.stringify(records, null, 2), 'utf8')
-  await rename(temporaryPath, authorizationStorePath)
+  await writeJsonStore(authorizationStorePath, records)
 }
 
 const getPaymentAuthorizationConfig = (env: Record<string, string>, receivable: Receivable): PaymentAuthorizationConfig | null => {
@@ -458,10 +468,7 @@ const readAuditProofJobs = async (): Promise<AuditProofJob[]> => {
 }
 
 const writeAuditProofJobs = async (jobs: AuditProofJob[]) => {
-  await mkdir(dirname(auditProofStorePath), { recursive: true })
-  const temporaryPath = `${auditProofStorePath}.tmp`
-  await writeFile(temporaryPath, JSON.stringify(jobs, null, 2), 'utf8')
-  await rename(temporaryPath, auditProofStorePath)
+  await writeJsonStore(auditProofStorePath, jobs)
 }
 
 const updateAuditProofJob = async (receivableId: string, updates: Partial<AuditProofJob>) => {

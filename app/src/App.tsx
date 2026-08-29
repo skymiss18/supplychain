@@ -1471,8 +1471,11 @@ function App() {
     return { address: result.accounts[0], chainId: result.chainId };
   };
 
-  const login = async () => {
-    if (!selectedLoginRole) return;
+  const enterWorkspace = () => {
+    if (!selectedLoginRole) {
+      setLoginMessage("Please select a role first.");
+      return;
+    }
     setLoginMessage("");
     if (connection.address) {
       sessionStorage.setItem(sessionRoleKey, selectedLoginRole);
@@ -1798,6 +1801,15 @@ function App() {
                 onClick={() => {
                   setSelectedLoginRole(item);
                   setLoginMessage("");
+                  if (!connection.address) {
+                    setLoginMessage(`Please connect your wallet to continue as ${roleNames[item]}.`);
+                    if (!openConnectModal) {
+                      setLoginMessage("The wallet connection dialog is not ready yet");
+                      return;
+                    }
+                    setLoginSubmitting(true);
+                    openConnectModal();
+                  }
                 }}
               >
                 <span>{index + 1}</span>
@@ -1809,21 +1821,13 @@ function App() {
               </button>
             ))}
           </div>
-          <button
-            className="wallet-login"
-            disabled={!selectedLoginRole}
-            onClick={() => void login()}
-          >
+          <button className="wallet-login" onClick={enterWorkspace}>
             {loginSubmitting ? (
               <LoaderCircle className="spin" size={17} />
             ) : (
-              <WalletCards size={17} />
+              <ArrowRight size={17} />
             )}
-            {loginSubmitting
-              ? "Connect in Wallet Dialog"
-              : selectedLoginRole
-                ? `Sign In as ${roleNames[selectedLoginRole]}`
-                : "Select a Role First"}
+            {loginSubmitting ? "Connect in Wallet Dialog" : "Enter Workspace"}
           </button>
           {loginMessage && <p className="login-error">{loginMessage}</p>}
           <footer>
