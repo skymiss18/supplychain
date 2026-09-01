@@ -16,8 +16,8 @@ The protocol is deployed and independently verifiable on the Creditcoin testnet:
 
 | Contract | Deployment |
 | --- | --- |
-| `ReceivableSettlement` | [`0x19b0...edf8`](https://creditcoin-testnet.blockscout.com/address/0x19b0719a78963ff367e18fcdeeff50542667edf8) |
-| `AuditProofRegistry` | [`0xe211...7c94`](https://creditcoin-testnet.blockscout.com/address/0xe211141c75a8037cd7943fc0f069fc9219e67c94) |
+| `ReceivableSettlement` | [`0xcf28...fad6`](https://creditcoin-testnet.blockscout.com/address/0xcf28f20f25de41f275793a2fbc52672b9a3efad6) |
+| `AuditProofRegistry` | [`0xb313...72b1`](https://creditcoin-testnet.blockscout.com/address/0xb31347c6a98570576e7abf77a2155eecb64072b1) |
 | `MockUSDC` (demo asset) | [`0xf40e...6A3`](https://creditcoin-testnet.blockscout.com/address/0xf40eAB52058b666De01f73fEa92a5623173A56A3) |
 
 **Network:** Creditcoin CC3 Testnet · **Chain ID:** `102031` · **Explorer:** [Blockscout](https://creditcoin-testnet.blockscout.com)
@@ -81,8 +81,7 @@ sequenceDiagram
     F->>C: Lock funding and submit offer
     S->>C: Accept offer and receive stablecoins
     A->>C: Execute authorization at maturity
-    C->>F: Record claimable settlement
-    F->>C: Claim repayment
+    C->>F: Transfer repayment atomically
 ```
 
 ### A complete working flow
@@ -92,7 +91,7 @@ sequenceDiagram
 3. **Verifiable evidence** - AttestFlow verifies the signature server-side and can register immutable evidence hashes in the `AuditProofRegistry` on Creditcoin.
 4. **On-chain financing** - The supplier publishes a financing request. A funder escrows stablecoins with an offer; acceptance releases the principal directly to the supplier.
 5. **Atomic settlement** - At maturity, an authorized relayer submits the buyer's one-time authorization. The settlement contract pulls funds and assigns them to the current funder in the same transaction.
-6. **Final claim** - The funder claims the settlement balance on-chain, completing the receivable lifecycle.
+6. **Atomic repayment** - The relayer executes the authorization and the contract transfers repayment directly to the accepted funder in the same transaction.
 
 ## Why It Is Different
 
@@ -130,7 +129,7 @@ Commercial files remain off-chain. AttestFlow anchors hashes of the receivable, 
 | Tokenize, manage, or finance real-world assets | Finances buyer-confirmed receivables and records the accepted funder's economic interest |
 | Bridge off-chain value on-chain | Converts trade-document facts and buyer approval into a deterministic receivable identity and executable payment terms |
 | Practical financial utility | Gives suppliers early stablecoin liquidity against future enterprise payments |
-| Transparent lifecycle | Exposes financing request, escrowed offer, acceptance, settlement, and claim through contract state and events |
+| Transparent lifecycle | Exposes financing request, escrowed offer, acceptance, and direct settlement through contract state and events |
 | Credible risk model | Treats buyer non-payment as credit risk; never describes an unlocked authorization as guaranteed funds |
 | Testnet execution | Core financing, evidence registry, and settlement contracts are deployed on Creditcoin CC3 |
 
@@ -174,7 +173,7 @@ Official references: [Attestcoin SDK](https://docs.creditcoin.org/attestcoin-pro
 - Supplier-only offer acceptance
 - EIP-3009 `transferWithAuthorization` settlement
 - Receivable-level and authorization-level replay protection
-- Pull-based funder claims
+- Atomic authorization settlement and direct funder transfer
 - Token allowlist and restricted settlement operators
 - `Pausable`, `ReentrancyGuard`, `SafeERC20`, and checks-effects-interactions
 
@@ -218,7 +217,7 @@ The interface provides dedicated **Supplier**, **Buyer**, and **Funder** workspa
 3. Return as **Supplier** and publish the financing request to Creditcoin CC3.
 4. Switch to **Funder**, approve mUSDC, and submit an escrow-backed offer.
 5. As **Supplier**, accept the offer and observe the on-chain disbursement.
-6. Trigger settlement with the verified authorization, then claim the repayment as **Funder**.
+6. Trigger settlement with the verified authorization; the accepted **Funder** receives repayment in the same transaction.
 7. Inspect transaction hashes, contract events, authorization status, and the audit-proof timeline in the interface.
 
 For presentation mode, `PAYMENT_AUTH_DEMO_MODE=true` makes the authorization immediately valid so judges do not need to wait for the invoice maturity date.

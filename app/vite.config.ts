@@ -130,19 +130,9 @@ type Receivable = {
 
 type ReceivablePayload = Omit<Receivable, 'id' | 'status'>
 
-const initialReceivables: Receivable[] = [
-  {
-    id: 'AR-2026-000001',
-    buyer: 'Global Manufacturing Group',
-    supplier: 'Huachen Precision Co., Ltd.',
-    invoice: 'INV-8891',
-    contractNumber: 'SC-2026-0818',
-    amount: 100000,
-    dueDate: '2026-10-25',
-    status: 'pending',
-    financingStatus: 'not_requested',
-  },
-]
+const initialReceivables: Receivable[] = []
+
+const createReceivableId = () => `AR-${new Date().getUTCFullYear()}-${crypto.randomUUID()}`
 
 const receivableStorePath = resolve(process.cwd(), '.data', 'receivables.json')
 
@@ -198,12 +188,8 @@ const receivableStorePlugin = (): Plugin => ({
         if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.dueDate!)) throw new Error('Invalid due date format')
 
         const records = await readReceivables()
-        const nextSequence = records.reduce((highest, record) => {
-          const sequence = Number(record.id.match(/(\d+)$/)?.[1] || 0)
-          return Math.max(highest, sequence)
-        }, 0) + 1
         const receivable: Receivable = {
-          id: `AR-2026-${String(nextSequence).padStart(6, '0')}`,
+          id: createReceivableId(),
           buyer: payload.buyer!.trim(),
           supplier: payload.supplier!.trim(),
           invoice: payload.invoice!.trim(),
@@ -427,6 +413,7 @@ const settlementAbi = [
   { type: 'function', name: 'financingOffers', stateMutability: 'view', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }], outputs: [{ name: 'funder', type: 'address' }, { name: 'supplier', type: 'address' }, { name: 'token', type: 'address' }, { name: 'principal', type: 'uint256' }, { name: 'faceValue', type: 'uint256' }, { name: 'annualizedYieldBps', type: 'uint256' }, { name: 'validUntil', type: 'uint64' }, { name: 'accepted', type: 'bool' }] },
   { type: 'function', name: 'settledReceivables', stateMutability: 'view', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }], outputs: [{ name: 'settled', type: 'bool' }] },
   { type: 'function', name: 'settleWithAuthorization', stateMutability: 'nonpayable', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }, { name: 'token', type: 'address' }, { name: 'payer', type: 'address' }, { name: 'recipient', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }, { name: 'v', type: 'uint8' }, { name: 'r', type: 'bytes32' }, { name: 's', type: 'bytes32' }], outputs: [] },
+  { type: 'function', name: 'settleAndTransferWithAuthorization', stateMutability: 'nonpayable', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }, { name: 'token', type: 'address' }, { name: 'payer', type: 'address' }, { name: 'recipient', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }, { name: 'v', type: 'uint8' }, { name: 'r', type: 'bytes32' }, { name: 's', type: 'bytes32' }], outputs: [] },
   { type: 'event', name: 'FinancingRequested', inputs: [{ indexed: true, name: 'receivableIdHash', type: 'bytes32' }, { indexed: true, name: 'supplier', type: 'address' }, { indexed: true, name: 'token', type: 'address' }, { indexed: false, name: 'faceValue', type: 'uint256' }] },
 ] as const
 
@@ -660,9 +647,10 @@ const settlementPlugin = (env: Record<string, string>): Plugin => ({
         const alreadySettled = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'settledReceivables', args: [receivableIdHash] })
         if (alreadySettled) {
           const claimableAmount = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'claimable', args: [config.tokenAddress, recipient] })
-          receivables[receivableIndex] = { ...receivable, status: 'settled' }
+          const directlyTransferred = claimableAmount === 0n
+          receivables[receivableIndex] = { ...receivable, status: directlyTransferred ? 'paid' : 'settled', financingStatus: directlyTransferred ? 'repaid' : receivable.financingStatus }
           await writeReceivables(receivables)
-          sendJson(response, 200, { alreadySettled: true, claimableAmount: claimableAmount.toString(), recipient })
+          sendJson(response, 200, { alreadySettled: true, directlyTransferred, amount: config.value, claimableAmount: claimableAmount.toString(), recipient })
           return
         }
         const parsedSignature = parseSignature(authorization.signature as Hex)
@@ -679,14 +667,13 @@ const settlementPlugin = (env: Record<string, string>): Plugin => ({
           parsedSignature.r,
           parsedSignature.s,
         ] as const
-        const { request: transactionRequest } = await publicClient.simulateContract({ account, address: config.settlementAddress, abi: settlementAbi, functionName: 'settleWithAuthorization', args })
+        const { request: transactionRequest } = await publicClient.simulateContract({ account, address: config.settlementAddress, abi: settlementAbi, functionName: 'settleAndTransferWithAuthorization', args })
         const transactionHash = await walletClient.writeContract(transactionRequest)
         const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash })
         if (receipt.status !== 'success') throw new Error('The on-chain settlement transaction failed')
-        const claimableAmount = await publicClient.readContract({ address: config.settlementAddress, abi: settlementAbi, functionName: 'claimable', args: [config.tokenAddress, recipient] })
-        receivables[receivableIndex] = { ...receivable, status: 'settled' }
+        receivables[receivableIndex] = { ...receivable, status: 'paid', financingStatus: 'repaid' }
         await writeReceivables(receivables)
-        sendJson(response, 200, { transactionHash, blockNumber: receipt.blockNumber.toString(), claimableAmount: claimableAmount.toString(), recipient })
+        sendJson(response, 200, { transactionHash, blockNumber: receipt.blockNumber.toString(), directlyTransferred: true, amount: config.value, claimableAmount: '0', recipient })
       } catch (error) {
         sendJson(response, 400, { error: error instanceof Error ? error.message.split('\n')[0] : 'On-chain settlement failed' })
       }

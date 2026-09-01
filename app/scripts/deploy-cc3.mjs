@@ -60,33 +60,46 @@ const deploy = async () => {
   const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) })
   const artifacts = await compileContracts()
 
-  const tokenHash = await walletClient.deployContract({
-    ...artifacts.MockUSDC,
-    args: [account.address],
-  })
-  console.log(`MockUSDC transaction: ${chain.blockExplorers.default.url}/tx/${tokenHash}`)
-  const tokenReceipt = await publicClient.waitForTransactionReceipt({ hash: tokenHash })
-  if (!tokenReceipt.contractAddress) throw new Error('MockUSDC deployment did not return a contract address')
-  console.log(`MockUSDC: ${tokenReceipt.contractAddress}`)
-
-  const funderAddress = env.CC3_FUNDER_WALLET_ADDRESS
-  if (isAddress(funderAddress)) {
-    const fundingHash = await walletClient.writeContract({
-      address: tokenReceipt.contractAddress,
-      abi: artifacts.MockUSDC.abi,
-      functionName: 'transfer',
-      args: [funderAddress, parseUnits('250000', 6)],
-    })
-    const fundingReceipt = await publicClient.waitForTransactionReceipt({ hash: fundingHash })
-    if (fundingReceipt.status !== 'success') throw new Error('Failed to fund funder wallet')
-    console.log('Funded funder wallet with 250,000 mUSDC.')
+  let tokenAddress = env.CC3_USDC_ADDRESS
+  if (isAddress(tokenAddress)) {
+    const tokenCode = await publicClient.getCode({ address: tokenAddress })
+    if (!tokenCode || tokenCode === '0x') throw new Error(`CC3_USDC_ADDRESS ${tokenAddress} is not a deployed contract`)
+    console.log(`Reusing MockUSDC: ${tokenAddress}`)
   } else {
-    console.log('Skipped funder mUSDC funding: wallet address is not configured.')
+    const tokenHash = await walletClient.deployContract({
+      ...artifacts.MockUSDC,
+      args: [account.address],
+    })
+    console.log(`MockUSDC transaction: ${chain.blockExplorers.default.url}/tx/${tokenHash}`)
+    const tokenReceipt = await publicClient.waitForTransactionReceipt({ hash: tokenHash })
+    if (!tokenReceipt.contractAddress) throw new Error('MockUSDC deployment did not return a contract address')
+    tokenAddress = tokenReceipt.contractAddress
+    console.log(`MockUSDC: ${tokenAddress}`)
+
+    const demoWallets = [
+      ['funder', env.CC3_FUNDER_WALLET_ADDRESS],
+      ['buyer', env.CC3_BUYER_WALLET_ADDRESS],
+    ]
+    for (const [role, address] of demoWallets) {
+      if (!isAddress(address)) {
+        console.log(`Skipped ${role} mUSDC funding: wallet address is not configured.`)
+        continue
+      }
+      const fundingHash = await walletClient.writeContract({
+        address: tokenAddress,
+        abi: artifacts.MockUSDC.abi,
+        functionName: 'transfer',
+        args: [address, parseUnits('250000', 6)],
+      })
+      const fundingReceipt = await publicClient.waitForTransactionReceipt({ hash: fundingHash })
+      if (fundingReceipt.status !== 'success') throw new Error(`Failed to fund ${role} wallet`)
+      console.log(`Funded ${role} wallet with 250,000 mUSDC.`)
+    }
   }
 
   const settlementHash = await walletClient.deployContract({
     ...artifacts.ReceivableSettlement,
-    args: [account.address, tokenReceipt.contractAddress],
+    args: [account.address, tokenAddress],
   })
   console.log(`ReceivableSettlement transaction: ${chain.blockExplorers.default.url}/tx/${settlementHash}`)
   const settlementReceipt = await publicClient.waitForTransactionReceipt({ hash: settlementHash })
@@ -102,7 +115,7 @@ const deploy = async () => {
   if (!auditProofRegistryReceipt.contractAddress) throw new Error('AuditProofRegistry deployment did not return a contract address')
   console.log(`AuditProofRegistry: ${auditProofRegistryReceipt.contractAddress}`)
 
-  appEnv = replaceEnvValue(appEnv, 'CC3_USDC_ADDRESS', tokenReceipt.contractAddress)
+  appEnv = replaceEnvValue(appEnv, 'CC3_USDC_ADDRESS', tokenAddress)
   appEnv = replaceEnvValue(appEnv, 'CC3_SETTLEMENT_ADDRESS', settlementReceipt.contractAddress)
   appEnv = replaceEnvValue(appEnv, 'CC3_AUDIT_PROOF_REGISTRY_ADDRESS', auditProofRegistryReceipt.contractAddress)
   await writeFile(appEnvPath, appEnv, 'utf8')

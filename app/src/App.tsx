@@ -99,8 +99,10 @@ type PaymentAuthorizationStatus = {
 type SettlementResult = {
   transactionHash?: Hex;
   claimableAmount?: string;
+  amount?: string;
   recipient?: Address;
   alreadySettled?: boolean;
+  directlyTransferred?: boolean;
   error?: string;
 };
 
@@ -1088,21 +1090,31 @@ function App() {
         if (
           !response.ok ||
           (!result.transactionHash && !result.alreadySettled) ||
-          !result.claimableAmount
+          (!result.directlyTransferred && !result.claimableAmount)
         )
           throw new Error(result.error || "On-chain settlement failed");
         setSettlementTransactionHash(result.transactionHash || null);
-        setPaymentStatus("claimable");
-        setReceivableStatus("settled");
+        const nextStatus = result.directlyTransferred ? "paid" : "settled";
+        setPaymentStatus(result.directlyTransferred ? "paid" : "claimable");
+        setReceivableStatus(nextStatus);
+        if (result.directlyTransferred) setFinancingStatus("repaid");
         setReceivables((items) =>
           items.map((receivable) =>
             receivable.id === activeReceivable.id
-              ? { ...receivable, status: "settled" }
+              ? {
+                  ...receivable,
+                  status: nextStatus,
+                  financingStatus: result.directlyTransferred
+                    ? "repaid"
+                    : receivable.financingStatus,
+                }
               : receivable,
           ),
         );
         setSettlementMessage(
-          `${result.alreadySettled ? "On-chain settlement status restored" : "Relayer settlement succeeded"}. The funder can claim ${formatUnits(BigInt(result.claimableAmount), 6)} mUSDC.`,
+          result.directlyTransferred
+            ? `${result.alreadySettled ? "On-chain settlement status restored" : "Relayer settlement succeeded"}. ${formatUnits(BigInt(result.amount || activeReceivable.amount * 1_000_000), 6)} mUSDC was transferred directly to the funder.`
+            : `${result.alreadySettled ? "On-chain settlement status restored" : "Relayer settlement succeeded"}. The funder can claim ${formatUnits(BigInt(result.claimableAmount || "0"), 6)} mUSDC.`,
         );
       } catch (error) {
         setPaymentStatus("failed");
@@ -1364,7 +1376,7 @@ function App() {
         : financingStatus === "not_requested"
           ? "Request Financing Quote"
           : financingStatus === "offered"
-            ? "Accept Non-Recourse Offer"
+            ? "Accept Offer"
             : receivableStatus === "assigned"
               ? "Advance to Demo Maturity"
               : "View Settlement Certificate";
@@ -2231,7 +2243,7 @@ function App() {
                     <strong>Maturity Settlement</strong>
                     <p>
                       {receivableStatus === "paid"
-                        ? "The funder has claimed the settlement funds"
+                        ? "The buyer authorization was executed and the settlement funds were transferred directly to the funder"
                         : receivableStatus === "settled"
                           ? "On-chain settlement is complete and awaiting the funder's claim"
                           : receivableStatus === "matured"
@@ -2369,7 +2381,7 @@ function App() {
               </span>
               <div>
                 <h2>Maturity Settlement Monitor</h2>
-                <p>EIP-3009 future authorization · Restricted relayer · Funder wallet claim</p>
+                <p>EIP-3009 future authorization · Restricted relayer · Atomic funder transfer</p>
               </div>
             </div>
             <div className="protocol-stats">

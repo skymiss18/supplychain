@@ -72,6 +72,14 @@ contract ReceivableSettlement is Ownable, Pausable, ReentrancyGuard {
         address recipient,
         uint256 amount
     );
+    event ReceivableSettledAndTransferred(
+        bytes32 indexed receivableIdHash,
+        bytes32 indexed authorizationHash,
+        address indexed payer,
+        address token,
+        address recipient,
+        uint256 amount
+    );
     event TokenAllowed(address indexed token, bool allowed);
     event FinancingRequested(
         bytes32 indexed receivableIdHash,
@@ -248,6 +256,55 @@ contract ReceivableSettlement is Ownable, Pausable, ReentrancyGuard {
         claimable[token][recipient] += amount;
         totalLiability[token] += amount;
         emit ReceivableSettled(receivableIdHash, authorizationHash, payer, token, recipient, amount);
+    }
+
+    function settleAndTransferWithAuthorization(
+        bytes32 receivableIdHash,
+        address token,
+        address payer,
+        address recipient,
+        uint256 amount,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external onlyOperator whenNotPaused nonReentrant {
+        if (!allowedTokens[token]) revert TokenNotAllowed(token);
+        if (recipient == address(0)) revert InvalidRecipient();
+        if (amount == 0) revert InvalidAmount();
+        if (settledReceivables[receivableIdHash]) revert AlreadySettled(receivableIdHash);
+        FinancingOffer memory offer = financingOffers[receivableIdHash];
+        if (!offer.accepted || offer.token != token || offer.funder != recipient || offer.faceValue != amount) {
+            revert InvalidOffer(receivableIdHash);
+        }
+
+        bytes32 authorizationHash = keccak256(
+            abi.encode(token, payer, address(this), amount, validAfter, validBefore, nonce)
+        );
+        if (usedAuthorizations[authorizationHash]) revert AuthorizationAlreadyUsed(authorizationHash);
+
+        settledReceivables[receivableIdHash] = true;
+        usedAuthorizations[authorizationHash] = true;
+
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+        IERC3009Token(token).transferWithAuthorization(
+            payer,
+            address(this),
+            amount,
+            validAfter,
+            validBefore,
+            nonce,
+            v,
+            r,
+            s
+        );
+        uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
+        if (received != amount) revert TransferAmountMismatch(amount, received);
+
+        IERC20(token).safeTransfer(recipient, amount);
+        emit ReceivableSettledAndTransferred(receivableIdHash, authorizationHash, payer, token, recipient, amount);
     }
 
     function claim(address token) external nonReentrant returns (uint256 amount) {
