@@ -4,7 +4,7 @@
 
 **RWA Track | Creditcoin CC3 + Attestcoin | End-to-end testnet prototype**
 
-[Pitch deck](demoscript/AttestFlow-pitch-deck.pdf) | [Product design](design.md) | [Run locally](#run-locally) | [Verify contracts](#live-testnet-deployments)
+[Run locally](#run-locally) | [Verify contracts](#live-testnet-deployments)
 
 ![AttestFlow protocol overview](app/src/assets/hero.png)
 
@@ -305,7 +305,6 @@ Deployment keys are stored in the git-ignored `.env.deploy.local`. Never place p
 | [`app/contracts/ReceivableSettlement.sol`](app/contracts/ReceivableSettlement.sol) | Financing, escrow, disbursement, and settlement |
 | [`app/src/paymentAuthorization.ts`](app/src/paymentAuthorization.ts) | EIP-3009 typed-data construction |
 | [`app/tests/contracts.test.mjs`](app/tests/contracts.test.mjs) | Contract ABI and proof-gate tests |
-| [`design.md`](design.md) | Product, risk, state-machine, and production architecture design |
 
 ## Scope: Built vs Next
 
