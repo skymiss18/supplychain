@@ -59,6 +59,14 @@ const deploy = async () => {
   if (balance === 0n) throw new Error(`Deployer ${account.address} has no CTC. Fund it from the Creditcoin Discord faucet first.`)
   const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) })
   const artifacts = await compileContracts()
+  const sourceChainKey = Number(env.ATTESTCOIN_SOURCE_CHAIN_KEY || '1')
+  const sourceContractAddress = env.SEPOLIA_ATTESTATION_SOURCE_ADDRESS
+  if (!Number.isSafeInteger(sourceChainKey) || sourceChainKey <= 0) {
+    throw new Error('ATTESTCOIN_SOURCE_CHAIN_KEY must be a positive integer')
+  }
+  if (!isAddress(sourceContractAddress)) {
+    throw new Error('Deploy the Sepolia source contract first with npm run deploy:sepolia')
+  }
 
   let tokenAddress = env.CC3_USDC_ADDRESS
   if (isAddress(tokenAddress)) {
@@ -97,23 +105,23 @@ const deploy = async () => {
     }
   }
 
-  const settlementHash = await walletClient.deployContract({
-    ...artifacts.ReceivableSettlement,
-    args: [account.address, tokenAddress],
-  })
-  console.log(`ReceivableSettlement transaction: ${chain.blockExplorers.default.url}/tx/${settlementHash}`)
-  const settlementReceipt = await publicClient.waitForTransactionReceipt({ hash: settlementHash })
-  if (!settlementReceipt.contractAddress) throw new Error('ReceivableSettlement deployment did not return a contract address')
-  console.log(`ReceivableSettlement: ${settlementReceipt.contractAddress}`)
-
   const auditProofRegistryHash = await walletClient.deployContract({
     ...artifacts.AuditProofRegistry,
-    args: [account.address],
+    args: [account.address, sourceChainKey, sourceContractAddress],
   })
   console.log(`AuditProofRegistry transaction: ${chain.blockExplorers.default.url}/tx/${auditProofRegistryHash}`)
   const auditProofRegistryReceipt = await publicClient.waitForTransactionReceipt({ hash: auditProofRegistryHash })
   if (!auditProofRegistryReceipt.contractAddress) throw new Error('AuditProofRegistry deployment did not return a contract address')
   console.log(`AuditProofRegistry: ${auditProofRegistryReceipt.contractAddress}`)
+
+  const settlementHash = await walletClient.deployContract({
+    ...artifacts.ReceivableSettlement,
+    args: [account.address, tokenAddress, auditProofRegistryReceipt.contractAddress],
+  })
+  console.log(`ReceivableSettlement transaction: ${chain.blockExplorers.default.url}/tx/${settlementHash}`)
+  const settlementReceipt = await publicClient.waitForTransactionReceipt({ hash: settlementHash })
+  if (!settlementReceipt.contractAddress) throw new Error('ReceivableSettlement deployment did not return a contract address')
+  console.log(`ReceivableSettlement: ${settlementReceipt.contractAddress}`)
 
   appEnv = replaceEnvValue(appEnv, 'CC3_USDC_ADDRESS', tokenAddress)
   appEnv = replaceEnvValue(appEnv, 'CC3_SETTLEMENT_ADDRESS', settlementReceipt.contractAddress)

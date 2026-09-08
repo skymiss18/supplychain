@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "node --test tests/*.test.mjs",
+    "attestcoin:check": "node scripts/check-attestcoin.mjs",
     "contracts:compile": "node scripts/compile-contracts.mjs",
+    "deploy:sepolia:prepare": "node scripts/deploy-sepolia-source.mjs --prepare",
+    "deploy:sepolia": "node scripts/deploy-sepolia-source.mjs",
     "deploy:cc3:prepare": "node scripts/deploy-cc3.mjs --prepare",
     "deploy:cc3": "node scripts/deploy-cc3.mjs",
     "deploy:audit-proof-registry": "node scripts/deploy-audit-proof-registry.mjs",
@@ -14,8 +18,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gluwa/usc-contracts": "^0.2.0",
+    "@gluwa/usc-sdk": "^0.18.0",
     "@rainbow-me/rainbowkit": "^2.2.11",
     "@tanstack/react-query": "^5.101.4",
+    "ethers": "^6.17.0",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^6.2.108",
     "react": "^19.2.7",

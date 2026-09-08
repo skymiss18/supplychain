@@ -21,8 +21,14 @@ interface IERC3009Token is IERC20 {
     ) external;
 }
 
+interface IAuditProofRegistry {
+    function isVerified(bytes32 receivableIdHash) external view returns (bool);
+}
+
 contract ReceivableSettlement is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    IAuditProofRegistry public immutable auditProofRegistry;
 
     struct FinancingOffer {
         address funder;
@@ -60,6 +66,7 @@ contract ReceivableSettlement is Ownable, Pausable, ReentrancyGuard {
     error OfferNotExpired(bytes32 receivableIdHash);
     error OnlyOperator(address caller);
     error OnlySupplier(address caller);
+    error ProofNotVerified(bytes32 receivableIdHash);
     error TokenNotAllowed(address token);
     error TransferAmountMismatch(uint256 expected, uint256 received);
 
@@ -101,8 +108,10 @@ contract ReceivableSettlement is Ownable, Pausable, ReentrancyGuard {
     event FinancingOfferCancelled(bytes32 indexed receivableIdHash, address indexed funder, uint256 principal);
     event Claimed(address indexed token, address indexed account, uint256 amount);
 
-    constructor(address initialOwner, address initialToken) Ownable(initialOwner) {
+    constructor(address initialOwner, address initialToken, address initialAuditProofRegistry) Ownable(initialOwner) {
         if (initialToken == address(0)) revert TokenNotAllowed(address(0));
+        if (initialAuditProofRegistry == address(0)) revert InvalidRecipient();
+        auditProofRegistry = IAuditProofRegistry(initialAuditProofRegistry);
         operators[initialOwner] = true;
         allowedTokens[initialToken] = true;
         emit OperatorUpdated(initialOwner, true);
@@ -138,6 +147,7 @@ contract ReceivableSettlement is Ownable, Pausable, ReentrancyGuard {
         if (!allowedTokens[token]) revert TokenNotAllowed(token);
         if (faceValue == 0) revert InvalidAmount();
         if (financingRequests[receivableIdHash].supplier != address(0)) revert OfferAlreadyExists(receivableIdHash);
+        if (!auditProofRegistry.isVerified(receivableIdHash)) revert ProofNotVerified(receivableIdHash);
 
         financingRequests[receivableIdHash] = FinancingRequest({
             supplier: msg.sender,

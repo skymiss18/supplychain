@@ -2,6 +2,7 @@ import { connectorsForWallets } from '@rainbow-me/rainbowkit'
 import { injectedWallet } from '@rainbow-me/rainbowkit/wallets'
 import { createConfig, http } from 'wagmi'
 import { defineChain } from 'viem'
+import { sepolia } from 'viem/chains'
 import { CREDITCOIN_TESTNET_CHAIN_ID, CREDITCOIN_TESTNET_RPC_URL } from './paymentAuthorization'
 
 export const creditcoinTestnet = defineChain({
@@ -22,7 +23,10 @@ const connectors = connectorsForWallets(
 )
 
 export const wagmiConfig = createConfig({
-  chains: [creditcoinTestnet],
+  chains: [creditcoinTestnet, sepolia],
   connectors,
-  transports: { [creditcoinTestnet.id]: http(CREDITCOIN_TESTNET_RPC_URL) },
+  transports: {
+    [creditcoinTestnet.id]: http(CREDITCOIN_TESTNET_RPC_URL),
+    [sepolia.id]: http(),
+  },
 })

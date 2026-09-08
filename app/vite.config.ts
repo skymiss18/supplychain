@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { createPublicClient, createWalletClient, defineChain, encodePacked, hashTypedData, http, isAddress, isAddressEqual, isHex, keccak256, parseSignature, toBytes, verifyTypedData, type Address, type Hex } from 'viem'
+import { createPublicClient, createWalletClient, defineChain, hashTypedData, http, isAddress, isAddressEqual, isHex, keccak256, parseSignature, toBytes, verifyTypedData, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -278,9 +278,13 @@ const paymentAuthorizationPlugin = (env: Record<string, string>): Plugin => ({
         }
         const config = getPaymentAuthorizationConfig(env, receivable)
         const funderAddress = env.CC3_FUNDER_WALLET_ADDRESS
+        const sourceContractAddress = env.SEPOLIA_ATTESTATION_SOURCE_ADDRESS
+        const auditProofRegistryAddress = env.CC3_AUDIT_PROOF_REGISTRY_ADDRESS
         sendJson(response, config ? 200 : 503, config ? {
           ...config,
           funderAddress: isAddress(funderAddress) ? funderAddress : undefined,
+          sourceContractAddress: isAddress(sourceContractAddress) ? sourceContractAddress : undefined,
+          auditProofRegistryAddress: isAddress(auditProofRegistryAddress) ? auditProofRegistryAddress : undefined,
         } : { error: 'CC3_USDC_ADDRESS and CC3_SETTLEMENT_ADDRESS are not configured on the server' })
         return
       }
@@ -414,12 +418,11 @@ const settlementAbi = [
   { type: 'function', name: 'settledReceivables', stateMutability: 'view', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }], outputs: [{ name: 'settled', type: 'bool' }] },
   { type: 'function', name: 'settleWithAuthorization', stateMutability: 'nonpayable', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }, { name: 'token', type: 'address' }, { name: 'payer', type: 'address' }, { name: 'recipient', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }, { name: 'v', type: 'uint8' }, { name: 'r', type: 'bytes32' }, { name: 's', type: 'bytes32' }], outputs: [] },
   { type: 'function', name: 'settleAndTransferWithAuthorization', stateMutability: 'nonpayable', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }, { name: 'token', type: 'address' }, { name: 'payer', type: 'address' }, { name: 'recipient', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }, { name: 'v', type: 'uint8' }, { name: 'r', type: 'bytes32' }, { name: 's', type: 'bytes32' }], outputs: [] },
-  { type: 'event', name: 'FinancingRequested', inputs: [{ indexed: true, name: 'receivableIdHash', type: 'bytes32' }, { indexed: true, name: 'supplier', type: 'address' }, { indexed: true, name: 'token', type: 'address' }, { indexed: false, name: 'faceValue', type: 'uint256' }] },
 ] as const
 
 const auditProofRegistryAbi = [
-  { type: 'function', name: 'proofs', stateMutability: 'view', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }], outputs: [{ name: 'sourceTransactionHash', type: 'bytes32' }, { name: 'evidenceHash', type: 'bytes32' }, { name: 'registeredAt', type: 'uint64' }, { name: 'registrar', type: 'address' }] },
-  { type: 'function', name: 'registerProof', stateMutability: 'nonpayable', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }, { name: 'sourceTransactionHash', type: 'bytes32' }, { name: 'evidenceHash', type: 'bytes32' }], outputs: [] },
+  { type: 'function', name: 'proofs', stateMutability: 'view', inputs: [{ name: 'receivableIdHash', type: 'bytes32' }], outputs: [{ name: 'queryId', type: 'bytes32' }, { name: 'evidenceHash', type: 'bytes32' }, { name: 'buyer', type: 'address' }, { name: 'registeredAt', type: 'uint64' }, { name: 'registrar', type: 'address' }] },
+  { type: 'function', name: 'registerProof', stateMutability: 'nonpayable', inputs: [{ name: 'chainKey', type: 'uint64' }, { name: 'blockHeight', type: 'uint64' }, { name: 'encodedTransaction', type: 'bytes' }, { name: 'merkleRoot', type: 'bytes32' }, { name: 'siblings', type: 'tuple[]', components: [{ name: 'hash', type: 'bytes32' }, { name: 'isLeft', type: 'bool' }] }, { name: 'lowerEndpointDigest', type: 'bytes32' }, { name: 'continuityRoots', type: 'bytes32[]' }], outputs: [{ name: 'success', type: 'bool' }] },
 ] as const
 
 const loadRelayerAccount = async () => {
@@ -429,15 +432,16 @@ const loadRelayerAccount = async () => {
   return privateKeyToAccount(privateKey as Hex)
 }
 
-type AuditProofStatus = 'queued' | 'waiting_source' | 'building' | 'submitting' | 'recorded' | 'failed'
+type AuditProofStatus = 'queued' | 'waiting_attestation' | 'building' | 'submitting' | 'verified' | 'failed'
 type AuditProofJob = {
   receivableId: string
   status: AuditProofStatus
   sourceTransactionHash?: Hex
   sourceBlockNumber?: string
+  sourceChainKey?: number
   evidenceHash?: Hex
-  registrationTransactionHash?: Hex
-  registeredAt?: string
+  verificationTransactionHash?: Hex
+  verifiedAt?: string
   error?: string
   updatedAt: string
 }
@@ -474,12 +478,19 @@ const updateAuditProofJob = async (receivableId: string, updates: Partial<AuditP
   return next
 }
 
-const processAuditProof = async (env: Record<string, string>, receivableId: string) => {
+const processAuditProof = async (env: Record<string, string>, receivableId: string, sourceTransactionHash?: Hex) => {
   if (activeAuditProofJobs.has(receivableId)) return
   activeAuditProofJobs.add(receivableId)
   try {
     const registryAddress = env.CC3_AUDIT_PROOF_REGISTRY_ADDRESS
     if (!isAddress(registryAddress)) throw new Error('The audit proof registry is not configured on the server')
+    const sourceChainKey = Number(env.ATTESTCOIN_SOURCE_CHAIN_KEY || '1')
+    if (!Number.isSafeInteger(sourceChainKey) || sourceChainKey <= 0) throw new Error('Invalid Attestcoin source chain key')
+    const currentJob = (await readAuditProofJobs()).find((job) => job.receivableId === receivableId)
+    const transactionHash = sourceTransactionHash || currentJob?.sourceTransactionHash
+    if (!transactionHash || !isHex(transactionHash) || transactionHash.length !== 66) {
+      throw new Error('A Sepolia source transaction hash is required')
+    }
     const receivable = (await readReceivables()).find((item) => item.id === receivableId)
     if (!receivable) throw new Error('Receivable not found')
     const config = getPaymentAuthorizationConfig(env, receivable)
@@ -503,61 +514,88 @@ const processAuditProof = async (env: Record<string, string>, receivableId: stri
     const walletClient = createWalletClient({ account, chain: cc3Testnet, transport: http() })
     const receivableIdHash = keccak256(toBytes(receivableId))
     const existingProof = await publicClient.readContract({ address: registryAddress, abi: auditProofRegistryAbi, functionName: 'proofs', args: [receivableIdHash] })
-    if (existingProof[2] > 0n) {
+    if (existingProof[3] > 0n) {
       await updateAuditProofJob(receivableId, {
-        status: 'recorded',
-        sourceTransactionHash: existingProof[0],
+        status: 'verified',
+        sourceTransactionHash: transactionHash,
+        sourceChainKey,
         evidenceHash: existingProof[1],
-        registeredAt: new Date(Number(existingProof[2]) * 1000).toISOString(),
+        verifiedAt: new Date(Number(existingProof[3]) * 1000).toISOString(),
         error: undefined,
       })
       return
     }
 
-    const latestBlock = await publicClient.getBlockNumber()
-    const fromBlock = latestBlock > 10_000n ? latestBlock - 10_000n : 0n
-    const sourceEvents = await publicClient.getContractEvents({
-      address: config.settlementAddress,
-      abi: settlementAbi,
-      eventName: 'FinancingRequested',
-      args: { receivableIdHash },
-      fromBlock,
-      toBlock: 'latest',
-    })
-    const sourceEvent = sourceEvents.at(-1)
-    if (!sourceEvent?.transactionHash || sourceEvent.blockNumber === null) {
-      await updateAuditProofJob(receivableId, { status: 'waiting_source', error: undefined })
-      return
+    const { Interface, JsonRpcProvider } = await import('ethers')
+    const { proofProvider } = await import('@gluwa/usc-sdk')
+    const sourceProvider = new JsonRpcProvider(env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com')
+    const sourceTransaction = await sourceProvider.getTransaction(transactionHash)
+    const sourceBlockNumber = sourceTransaction?.blockNumber
+    const sourceReceipt = await sourceProvider.getTransactionReceipt(transactionHash)
+    sourceProvider.destroy()
+    if (sourceBlockNumber === null || sourceBlockNumber === undefined) throw new Error('The Sepolia source transaction is not confirmed')
+    const sourceContractAddress = env.SEPOLIA_ATTESTATION_SOURCE_ADDRESS
+    if (!isAddress(sourceContractAddress)) throw new Error('The Sepolia attestation source is not configured')
+    const sourceInterface = new Interface([
+      'event ReceivableAttested(bytes32 indexed receivableIdHash, bytes32 indexed evidenceHash, address indexed buyer)',
+    ])
+    const sourceEvent = sourceReceipt?.logs
+      .filter((log) => isAddressEqual(log.address as Address, sourceContractAddress))
+      .map((log) => {
+        try { return sourceInterface.parseLog({ topics: [...log.topics], data: log.data }) }
+        catch { return null }
+      })
+      .find((event) => event?.name === 'ReceivableAttested')
+    if (!sourceEvent
+      || sourceEvent.args.receivableIdHash !== receivableIdHash
+      || sourceEvent.args.evidenceHash !== authorization.authorizationHash
+      || !isAddressEqual(sourceEvent.args.buyer, authorization.message.from as Address)) {
+      throw new Error('The Sepolia attestation does not match the verified payment authorization')
     }
-
     await updateAuditProofJob(receivableId, {
-      status: 'building',
-      sourceTransactionHash: sourceEvent.transactionHash,
-      sourceBlockNumber: sourceEvent.blockNumber.toString(),
+      status: 'waiting_attestation',
+      sourceTransactionHash: transactionHash,
+      sourceBlockNumber: sourceBlockNumber.toString(),
+      sourceChainKey,
       error: undefined,
     })
-    const sourceBlock = await publicClient.getBlock({ blockNumber: sourceEvent.blockNumber })
-    const evidenceHash = keccak256(encodePacked(
-      ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-      [receivableIdHash, authorization.authorizationHash as Hex, sourceEvent.transactionHash, sourceBlock.hash],
-    ))
-    await updateAuditProofJob(receivableId, { status: 'submitting', evidenceHash })
+    const proofBuilder = new proofProvider.service.ProofBuilder(
+      sourceChainKey,
+      env.ATTESTCOIN_PROOF_BUILDER_URL || 'https://proof-gen-api.cc3-testnet.creditcoin.network',
+    )
+    await proofBuilder.waitUntilHeightAttested(sourceChainKey, sourceBlockNumber)
+    await updateAuditProofJob(receivableId, { status: 'building' })
+    const proofResult = await proofBuilder.getProof(transactionHash)
+    if (!proofResult.success || !proofResult.data) throw new Error(proofResult.error || 'Attestcoin proof generation failed')
+    const proof = proofResult.data
+    if (proof.chainKey !== sourceChainKey || proof.headerNumber !== sourceBlockNumber) {
+      throw new Error('Attestcoin proof metadata does not match the source transaction')
+    }
+    await updateAuditProofJob(receivableId, { status: 'submitting', evidenceHash: authorization.authorizationHash as Hex })
     const { request } = await publicClient.simulateContract({
       account,
       address: registryAddress,
       abi: auditProofRegistryAbi,
       functionName: 'registerProof',
-      args: [receivableIdHash, sourceEvent.transactionHash, evidenceHash],
+      args: [
+        BigInt(proof.chainKey),
+        BigInt(proof.headerNumber),
+        proof.txBytes as Hex,
+        proof.merkleProof.root as Hex,
+        proof.merkleProof.siblings.map((entry) => ({ hash: entry.hash as Hex, isLeft: entry.isLeft })),
+        proof.continuityProof.lowerEndpointDigest as Hex,
+        proof.continuityProof.roots as Hex[],
+      ],
     })
-    const registrationTransactionHash = await walletClient.writeContract(request)
-    await updateAuditProofJob(receivableId, { registrationTransactionHash })
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: registrationTransactionHash })
-    if (receipt.status !== 'success') throw new Error('The on-chain audit proof registration transaction failed')
-    const registeredBlock = await publicClient.getBlock({ blockNumber: receipt.blockNumber })
+    const verificationTransactionHash = await walletClient.writeContract(request)
+    await updateAuditProofJob(receivableId, { verificationTransactionHash })
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: verificationTransactionHash })
+    if (receipt.status !== 'success') throw new Error('The on-chain Attestcoin verification transaction failed')
+    const verifiedBlock = await publicClient.getBlock({ blockNumber: receipt.blockNumber })
     await updateAuditProofJob(receivableId, {
-      status: 'recorded',
-      registrationTransactionHash,
-      registeredAt: new Date(Number(registeredBlock.timestamp) * 1000).toISOString(),
+      status: 'verified',
+      verificationTransactionHash,
+      verifiedAt: new Date(Number(verifiedBlock.timestamp) * 1000).toISOString(),
       error: undefined,
     })
   } catch (error) {
@@ -577,11 +615,12 @@ const auditProofPlugin = (env: Record<string, string>): Plugin => ({
       const requestUrl = new URL(request.url || '/', 'http://localhost')
       try {
         if (request.method === 'POST' && requestUrl.pathname === '/') {
-          const { receivableId } = await readJsonBody<{ receivableId?: string }>(request)
+          const { receivableId, sourceTransactionHash } = await readJsonBody<{ receivableId?: string, sourceTransactionHash?: Hex }>(request)
           if (!receivableId) throw new Error('Missing receivable ID')
+          if (!sourceTransactionHash || !isHex(sourceTransactionHash) || sourceTransactionHash.length !== 66) throw new Error('Missing Sepolia source transaction hash')
           const existing = (await readAuditProofJobs()).find((job) => job.receivableId === receivableId)
-          const job = existing || await updateAuditProofJob(receivableId, { status: 'queued' })
-          if (job.status !== 'recorded') void processAuditProof(env, receivableId)
+          const job = await updateAuditProofJob(receivableId, { ...existing, status: 'queued', sourceTransactionHash, error: undefined })
+          if (job.status !== 'verified') void processAuditProof(env, receivableId, sourceTransactionHash)
           sendJson(response, 202, job)
           return
         }
@@ -593,7 +632,7 @@ const auditProofPlugin = (env: Record<string, string>): Plugin => ({
             sendJson(response, 200, { receivableId, status: 'not_started' })
             return
           }
-          if (job.status !== 'recorded') void processAuditProof(env, receivableId)
+          if (job.status !== 'verified') void processAuditProof(env, receivableId)
           sendJson(response, 200, job)
           return
         }

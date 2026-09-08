@@ -3,7 +3,12 @@ import { dirname, resolve } from 'node:path'
 import solc from 'solc'
 
 const root = resolve(import.meta.dirname, '..')
-const contractNames = ['MockUSDC', 'ReceivableSettlement', 'AuditProofRegistry']
+const contractNames = [
+  'MockUSDC',
+  'ReceivableSettlement',
+  'AuditProofRegistry',
+  'ReceivableAttestationSource',
+]
 
 const findImports = (importPath) => {
   const filePath = importPath.startsWith('@')

@@ -17,6 +17,7 @@ import {
 } from "wagmi";
 import {
   formatUnits,
+  isAddress,
   isAddressEqual,
   keccak256,
   parseUnits,
@@ -25,6 +26,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { sepolia } from "viem/chains";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   ArrowRight,
@@ -81,13 +83,13 @@ type PaymentStatus =
 type ProofStatus =
   | "not_started"
   | "queued"
-  | "waiting_source"
+  | "waiting_attestation"
   | "building"
   | "submitting"
-  | "recorded"
+  | "verified"
   | "failed";
 type AuthorizationStep =
-  "idle" | "connecting" | "switching" | "signing" | "verifying" | "verified";
+  "idle" | "connecting" | "switching" | "signing" | "verifying" | "attesting" | "verified";
 type PaymentAuthorizationStatus = {
   status: "verified" | "not_found";
   authorizationHash?: Hex;
@@ -111,13 +113,16 @@ type AuditProofJob = {
   status: ProofStatus;
   sourceTransactionHash?: Hex;
   sourceBlockNumber?: string;
+  sourceChainKey?: number;
   evidenceHash?: Hex;
-  registrationTransactionHash?: Hex;
-  registeredAt?: string;
+  verificationTransactionHash?: Hex;
+  verifiedAt?: string;
   error?: string;
 };
 
 type FinancingConfig = PaymentAuthorizationConfig & {
+  sourceContractAddress?: Address;
+  auditProofRegistryAddress?: Address;
   error?: string;
 };
 
@@ -325,6 +330,34 @@ const settlementAbi = [
   },
 ] as const;
 
+const receivableAttestationSourceAbi = [
+  {
+    type: "error",
+    name: "InvalidAttestation",
+    inputs: [],
+  },
+  {
+    type: "function",
+    name: "attest",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "receivableIdHash", type: "bytes32" },
+      { name: "evidenceHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const auditProofRegistryAbi = [
+  {
+    type: "function",
+    name: "isVerified",
+    stateMutability: "view",
+    inputs: [{ name: "receivableIdHash", type: "bytes32" }],
+    outputs: [{ name: "verified", type: "bool" }],
+  },
+] as const;
+
 const tokenAbi = [
   {
     type: "function",
@@ -398,7 +431,8 @@ function App() {
   const { switchChainAsync } = useSwitchChain();
   const { signTypedDataAsync } = useSignTypedData();
   const { writeContractAsync } = useWriteContract();
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId: CREDITCOIN_TESTNET_CHAIN_ID });
+  const sepoliaPublicClient = usePublicClient({ chainId: sepolia.id });
   const initialSessionRole = getSessionRole();
   const isLoginPage = window.location.pathname === "/login";
   const [role, setRole] = useState<Role>(initialSessionRole || "supplier");
@@ -604,6 +638,7 @@ function App() {
     activeReceivable.id,
     activeReceivable.status,
     loggedIn,
+    receivables.length,
   ]);
 
   useEffect(() => {
@@ -614,19 +649,6 @@ function App() {
       return;
     }
     const controller = new AbortController();
-    const startProof = async () => {
-      try {
-        await fetch("/api/audit-proofs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ receivableId: activeReceivable.id }),
-          signal: controller.signal,
-        });
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError"))
-          setProofStatus("failed");
-      }
-    };
     const refreshProof = async () => {
       try {
         const response = await fetch(
@@ -658,13 +680,18 @@ function App() {
         }
       }
     };
-    void startProof().then(refreshProof);
+    void refreshProof();
     const polling = window.setInterval(() => void refreshProof(), 3_000);
     return () => {
       controller.abort();
       window.clearInterval(polling);
     };
-  }, [activeReceivable.id, authorizationHash, loggedIn]);
+  }, [
+    activeReceivable.id,
+    authorizationHash,
+    loggedIn,
+    receivables.length,
+  ]);
 
   useEffect(() => {
     if (!loggedIn || receivables.length === 0) return;
@@ -877,6 +904,7 @@ function App() {
     activeReceivable.status,
     loggedIn,
     publicClient,
+    receivables.length,
   ]);
 
   const goTo = (id: string) =>
@@ -940,6 +968,18 @@ function App() {
         throw new Error(
           config.error || "Unable to load the financing contract configuration",
         );
+      if (!config.auditProofRegistryAddress)
+        throw new Error("The Attestcoin audit proof registry is not configured");
+      if (!publicClient)
+        throw new Error("Creditcoin RPC client is unavailable");
+      const proofVerified = await publicClient.readContract({
+        address: config.auditProofRegistryAddress,
+        abi: auditProofRegistryAbi,
+        functionName: "isVerified",
+        args: [receivableHash(receivable.id)],
+      });
+      if (!proofVerified)
+        throw new Error("Attestcoin verification is required before financing can start");
       const transactionHash = await writeContractAsync({
         address: config.settlementAddress,
         abi: settlementAbi,
@@ -952,8 +992,6 @@ function App() {
         account: address,
         chainId: CREDITCOIN_TESTNET_CHAIN_ID,
       });
-      if (!publicClient)
-        throw new Error("Creditcoin RPC client is unavailable");
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: transactionHash,
       });
@@ -1381,9 +1419,14 @@ function App() {
               ? "Advance to Demo Maturity"
               : "View Settlement Certificate";
   const contextualActionLabel = `${actionLabel} · ${activeReceivable.id}`;
+  const activeReceivableStatusLabel =
+    receivableStatus === "active" && proofStatus !== "verified"
+      ? "Confirmed · Attestcoin Verification Pending"
+      : receivableStatusNames[receivableStatus];
   const canShowAction =
     (role === "supplier" &&
       receivableStatus === "active" &&
+      proofStatus === "verified" &&
       financingStatus === "not_requested") ||
     (role === "supplier" && financingStatus === "offered") ||
     (role === "operator" &&
@@ -1397,7 +1440,7 @@ function App() {
       ["claimable", "claiming"].includes(paymentStatus)) ||
     ["paid", "defaulted"].includes(receivableStatus);
   const proofLevel =
-    proofStatus === "recorded"
+    proofStatus === "verified"
       ? 4
       : proofStatus === "submitting"
         ? 2
@@ -1465,7 +1508,11 @@ function App() {
     ["funded", "repaid", "in_default"].includes(financingStatus) ||
     hasCompletedFinancing;
   const roleWorkflowMessage =
-    role === "funder" &&
+    role === "supplier" &&
+    receivableStatus === "active" &&
+    proofStatus !== "verified"
+      ? "Buyer confirmation is complete. Waiting for Attestcoin verification before financing can start."
+      : role === "funder" &&
     receivableStatus === "active" &&
     financingStatus === "not_requested"
       ? `Waiting for the supplier to request financing for ${activeReceivable.id}.`
@@ -1540,68 +1587,136 @@ function App() {
       }
       if (!address)
         throw new Error("The wallet did not return a signing address");
-      if (chainId !== CREDITCOIN_TESTNET_CHAIN_ID) {
-        setAuthorizationStep("switching");
-        await switchChainAsync({ chainId: CREDITCOIN_TESTNET_CHAIN_ID });
-      }
 
       const configResponse = await fetch(
         `/api/payment-authorizations/config?receivableId=${encodeURIComponent(activeReceivable.id)}`,
       );
-      const configResult =
-        (await configResponse.json()) as PaymentAuthorizationConfig & {
-          error?: string;
-        };
+      const configResult = (await configResponse.json()) as FinancingConfig;
       if (!configResponse.ok)
         throw new Error(
           configResult.error ||
             "Unable to load the payment authorization configuration",
         );
-      const nonce = toHex(crypto.getRandomValues(new Uint8Array(32)));
-      const typedData = buildPaymentAuthorizationTypedData(
-        configResult,
-        address as Address,
-        nonce,
-      );
-
-      setAuthorizationStep("signing");
-      setAuthorizationMessage(
-        configResult.demoMode
-          ? "Sign the demo EIP-3009 authorization in your wallet. This signature will not lock or transfer funds."
-          : "Sign the EIP-3009 payment authorization in your wallet.",
-      );
-      const signature = await signTypedDataAsync(typedData);
-
-      setAuthorizationStep("verifying");
-      setAuthorizationMessage(
-        "Signature complete. The server is independently verifying and saving it...",
-      );
-      const response = await fetch("/api/payment-authorizations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          receivableId: activeReceivable.id,
-          message: serializePaymentAuthorizationMessage(typedData.message),
-          signature,
-        }),
-      });
-      const result = (await response.json()) as {
-        authorizationHash?: Hex;
-        verifiedAt?: string;
-        message?: { from?: Address };
-        error?: string;
-      };
-      if (!response.ok || !result.authorizationHash)
-        throw new Error(
-          result.error || "The server could not save the payment authorization",
+      let confirmedAuthorizationHash = authorizationHash;
+      if (!confirmedAuthorizationHash) {
+        if (chainId !== CREDITCOIN_TESTNET_CHAIN_ID) {
+          setAuthorizationStep("switching");
+          await switchChainAsync({ chainId: CREDITCOIN_TESTNET_CHAIN_ID });
+        }
+        const nonce = toHex(crypto.getRandomValues(new Uint8Array(32)));
+        const typedData = buildPaymentAuthorizationTypedData(
+          configResult,
+          address as Address,
+          nonce,
         );
 
-      setAuthorizationHash(result.authorizationHash);
-      setAuthorizationSigner(result.message?.from || (address as Address));
-      setAuthorizationVerifiedAt(result.verifiedAt || new Date().toISOString());
+        setAuthorizationStep("signing");
+        setAuthorizationMessage(
+          configResult.demoMode
+            ? "Sign the demo EIP-3009 authorization in your wallet. This signature will not lock or transfer funds."
+            : "Sign the EIP-3009 payment authorization in your wallet.",
+        );
+        const signature = await signTypedDataAsync(typedData);
+
+        setAuthorizationStep("verifying");
+        setAuthorizationMessage(
+          "Signature complete. The server is independently verifying and saving it...",
+        );
+        const response = await fetch("/api/payment-authorizations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receivableId: activeReceivable.id,
+            message: serializePaymentAuthorizationMessage(typedData.message),
+            signature,
+          }),
+        });
+        const result = (await response.json()) as {
+          authorizationHash?: Hex;
+          verifiedAt?: string;
+          message?: { from?: Address };
+          error?: string;
+        };
+        if (!response.ok || !result.authorizationHash)
+          throw new Error(
+            result.error || "The server could not save the payment authorization",
+          );
+
+        confirmedAuthorizationHash = result.authorizationHash;
+        setAuthorizationHash(confirmedAuthorizationHash);
+        setAuthorizationSigner(result.message?.from || (address as Address));
+        setAuthorizationVerifiedAt(result.verifiedAt || new Date().toISOString());
+      }
+      if (!configResult.sourceContractAddress || !isAddress(configResult.sourceContractAddress))
+        throw new Error("The Sepolia attestation source contract is not configured");
+      if (!sepoliaPublicClient)
+        throw new Error("Sepolia RPC client is unavailable");
+
+      setAuthorizationStep("switching");
+      setAuthorizationMessage("Payment authorization saved. Switch to Sepolia to publish the receivable attestation...");
+      await switchChainAsync({ chainId: sepolia.id });
+      setAuthorizationStep("attesting");
+      setAuthorizationMessage("Checking the buyer wallet's Sepolia ETH balance...");
+      const sepoliaBalance = await sepoliaPublicClient.getBalance({
+        address: address as Address,
+      });
+      if (sepoliaBalance === 0n)
+        throw new Error(
+          `Buyer wallet ${address} has no Sepolia ETH. Fund it from a Sepolia faucet, then try again.`,
+        );
+      const attestArgs = [
+        receivableHash(activeReceivable.id),
+        confirmedAuthorizationHash,
+      ] as const;
+      await sepoliaPublicClient.simulateContract({
+        account: address as Address,
+        address: configResult.sourceContractAddress,
+        abi: receivableAttestationSourceAbi,
+        functionName: "attest",
+        args: attestArgs,
+      });
+      const attestGas = await sepoliaPublicClient.estimateContractGas({
+        account: address as Address,
+        address: configResult.sourceContractAddress,
+        abi: receivableAttestationSourceAbi,
+        functionName: "attest",
+        args: attestArgs,
+      });
+      const attestGasLimit = attestGas + attestGas / 5n;
+      const estimatedGasCost = attestGasLimit * await sepoliaPublicClient.getGasPrice();
+      if (sepoliaBalance < estimatedGasCost)
+        throw new Error(
+          `Buyer wallet ${address} does not have enough Sepolia ETH for gas. Fund it from a Sepolia faucet, then try again.`,
+        );
+      setAuthorizationMessage("Open your wallet and confirm the Sepolia attestation transaction...");
+      const sourceTransactionHash = await writeContractAsync({
+        address: configResult.sourceContractAddress,
+        abi: receivableAttestationSourceAbi,
+        functionName: "attest",
+        args: attestArgs,
+        account: address as Address,
+        chainId: sepolia.id,
+        gas: attestGasLimit,
+      });
+      setAuthorizationMessage("Sepolia transaction submitted. Waiting for confirmation...");
+      const sourceReceipt = await sepoliaPublicClient.waitForTransactionReceipt({
+        hash: sourceTransactionHash,
+        timeout: 120_000,
+      });
+      if (sourceReceipt.status !== "success") throw new Error("The Sepolia attestation transaction failed");
+
+      const proofResponse = await fetch("/api/audit-proofs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receivableId: activeReceivable.id, sourceTransactionHash }),
+      });
+      const proofJob = (await proofResponse.json()) as AuditProofJob & { error?: string };
+      if (!proofResponse.ok) throw new Error(proofJob.error || "Unable to start Attestcoin verification");
+      setAuditProofJob(proofJob);
+      setProofStatus(proofJob.status);
       setAuthorizationStep("verified");
       setAuthorizationMessage(
-        "Payable confirmed successfully. The payment authorization was verified and saved. This signature did not lock any USDC.",
+        "Payable confirmed and published on Sepolia. Attestcoin verification is now running in the background.",
       );
       if (receivableStatus === "pending") {
         setReceivableStatus("active");
@@ -1619,7 +1734,6 @@ function App() {
         });
       }
       setPaymentStatus("authorized");
-      setProofStatus("queued");
     } catch (error) {
       setAuthorizationStep("idle");
       setAuthorizationMessage(
@@ -1724,7 +1838,7 @@ function App() {
       </span>
       <div>
         <strong>
-          {activeReceivable.id} · {receivableStatusNames[receivableStatus]}
+          {activeReceivable.id} · {activeReceivableStatusLabel}
         </strong>
         <p
           className={
@@ -1747,7 +1861,10 @@ function App() {
         </p>
       </div>
       {role === "buyer" &&
-      (receivableStatus === "pending" || !authorizationHash) ? (
+      (receivableStatus === "pending" ||
+        !authorizationHash ||
+        proofStatus === "not_started" ||
+        proofStatus === "failed") ? (
         <button
           className="primary"
           disabled={authorizationStep !== "idle"}
@@ -1759,12 +1876,16 @@ function App() {
           {authorizationStep === "connecting"
             ? "Connecting Wallet"
             : authorizationStep === "switching"
-              ? "Switching to CC3"
+              ? "Switching Network"
               : authorizationStep === "signing"
                 ? "Awaiting Wallet Signature"
                 : authorizationStep === "verifying"
                   ? "Verifying Signature"
-                  : `Confirm Payable · ${activeReceivable.id}`}
+                  : authorizationStep === "attesting"
+                    ? "Publishing on Sepolia"
+                    : authorizationHash
+                      ? `Retry Sepolia Publishing · ${activeReceivable.id}`
+                      : `Confirm Payable · ${activeReceivable.id}`}
         </button>
       ) : role === "funder" && financingStatus === "quoting" ? (
         <button
@@ -2014,7 +2135,7 @@ function App() {
                 <p>
                   {receivables.length === 0
                     ? "No receivables"
-                    : receivableStatusNames[receivableStatus]}
+                    : activeReceivableStatusLabel}
                 </p>
               </div>
             </article>
@@ -2077,7 +2198,9 @@ function App() {
                         <small>Due {receivable.dueDate}</small>
                       </div>
                       <span className={`status ${currentStatus}`}>
-                        {receivableStatusNames[currentStatus]}
+                        {isCurrent
+                          ? activeReceivableStatusLabel
+                          : receivableStatusNames[currentStatus]}
                       </span>
                     </button>
                   </div>
@@ -2277,19 +2400,21 @@ function App() {
                 <p>Generate an evidence commitment from a real source transaction and register it asynchronously on Creditcoin CC3</p>
               </div>
               <span
-                className={`proof-badge ${proofStatus === "recorded" ? "verified" : ""}`}
+                className={`proof-badge ${proofStatus === "verified" ? "verified" : ""}`}
               >
                 <i />
                 {proofStatus === "not_started"
                   ? "Awaiting Buyer Confirmation"
-                  : proofStatus === "waiting_source" || proofStatus === "queued"
-                    ? "Awaiting Source Transaction"
+                  : proofStatus === "queued"
+                    ? "Source Transaction Confirmed"
+                    : proofStatus === "waiting_attestation"
+                      ? "Awaiting Attestation"
                     : proofStatus === "building"
-                      ? "Building Evidence"
+                      ? "Building Attestcoin Proof"
                       : proofStatus === "submitting"
-                        ? "Registering On-Chain"
-                        : proofStatus === "recorded"
-                          ? "Audit Proof Recorded"
+                        ? "Verifying On-Chain"
+                        : proofStatus === "verified"
+                          ? "Attestcoin Proof Verified"
                           : "Proof Task Failed"}
               </span>
             </div>
@@ -2298,33 +2423,33 @@ function App() {
                 [
                   "1",
                   "Source transaction",
-                  "Creditcoin CC3",
+                  "Ethereum Sepolia",
                   auditProofJob?.sourceTransactionHash
                     ? `${auditProofJob.sourceTransactionHash.slice(0, 10)}…${auditProofJob.sourceTransactionHash.slice(-8)}`
-                    : "Waiting for financing request",
+                    : "Waiting for buyer transaction",
                 ],
                 [
                   "2",
-                  "Evidence commitment",
-                  "Evidence Builder",
+                  "Transaction proof",
+                  "Attestcoin Proof Builder",
                   auditProofJob?.evidenceHash
                     ? `${auditProofJob.evidenceHash.slice(0, 10)}…${auditProofJob.evidenceHash.slice(-8)}`
                     : "Pending",
                 ],
                 [
                   "3",
-                  "CC3 registry",
+                  "CC3 verification",
                   "AuditProofRegistry",
-                  auditProofJob?.registrationTransactionHash
-                    ? `${auditProofJob.registrationTransactionHash.slice(0, 10)}…${auditProofJob.registrationTransactionHash.slice(-8)}`
+                  auditProofJob?.verificationTransactionHash
+                    ? `${auditProofJob.verificationTransactionHash.slice(0, 10)}…${auditProofJob.verificationTransactionHash.slice(-8)}`
                     : "Pending",
                 ],
                 [
                   "4",
-                  "Audit proof recorded",
+                  "Financeable",
                   "Verified Receivable",
-                  auditProofJob?.registeredAt
-                    ? new Date(auditProofJob.registeredAt).toLocaleString(
+                  auditProofJob?.verifiedAt
+                    ? new Date(auditProofJob.verifiedAt).toLocaleString(
                         "en-US",
                       )
                     : activeReceivable.id,
@@ -2356,13 +2481,13 @@ function App() {
                 {auditProofJob?.error ||
                   "The proof audits transaction facts. It does not indicate sufficient buyer funds, locked funds, or guaranteed repayment."}
               </p>
-              {auditProofJob?.registrationTransactionHash ? (
+              {auditProofJob?.verificationTransactionHash ? (
                 <a
-                  href={`https://creditcoin-testnet.blockscout.com/tx/${auditProofJob.registrationTransactionHash}`}
+                  href={`https://creditcoin-testnet.blockscout.com/tx/${auditProofJob.verificationTransactionHash}`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  View Registration Transaction
+                  View Verification Transaction
                   <ArrowRight size={13} />
                 </a>
               ) : (
@@ -2736,7 +2861,9 @@ function App() {
             </div>
             <div className="certificate">
               <span className={`status ${selectedReceivable.status}`}>
-                {receivableStatusNames[selectedReceivable.status]}
+                {selectedReceivable.id === activeReceivable.id
+                  ? activeReceivableStatusLabel
+                  : receivableStatusNames[selectedReceivable.status]}
               </span>
               <strong>${selectedReceivable.amount.toLocaleString()}</strong>
               <small>Due {selectedReceivable.dueDate}</small>
